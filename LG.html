@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Gestion LG</title>
+<style>
+body { font-family: Arial; margin: 20px; }
+h2 { margin-top: 25px; }
+.player {
+    margin: 6px 0; padding: 10px; border-radius: 6px;
+    border: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center;
+}
+.dead { opacity: 0.45; }
+.btn { padding: 4px 8px; margin-left: 5px; }
+.actions button { margin-right: 5px; }
+</style>
+</head>
+<body>
+
+<h2>Ajouter un joueur</h2>
+<input id="name" placeholder="Nom">
+<select id="roleSelect">
+    <option value="Ange">Ange</option>
+    <option value="Chien-loup">Chien-loup</option>
+    <option value="Enfant sauvage">Enfant sauvage</option>
+    <option value="Vieux fou">Vieux fou</option>
+    <option value="Cupidon">Cupidon</option>
+    <option value="Chasseur">Chasseur</option>
+    <option value="Voyante">Voyante</option>
+    <option value="Garde">Garde</option>
+    <option value="Croque mort">Croque mort</option>
+    <option value="Cannibale">Cannibale</option>
+    <option value="Renard">Renard</option>
+    <option value="LG simple">Loup-garou simple</option>
+    <option value="LG Infect">Infect père des loups</option>
+    <option value="LG Grimeur">Loup-garou grimeur</option>
+    <option value="LG Noir">Loup-garou noir</option>
+    <option value="LG Blanc">Loup-garou blanc</option>
+    <option value="Assassin">Assassin</option>
+    <option value="Sorcière">Sorcière</option>
+</select>
+<button onclick="addPlayer()">Ajouter</button>
+
+<h2>Joueurs</h2>
+<div id="list"></div>
+
+<h2>Export / Import</h2>
+<button onclick="exportData()">Exporter JSON</button>
+<input type="file" id="importFile" onchange="importData(event)">
+
+<script>
+const ROLE_ORDER = [
+    "Ange","Chien-loup","Enfant sauvage","Vieux fou","Cupidon","Chasseur",
+    "Voyante","Garde","Croque mort","Cannibale","Renard",
+    "LG simple","LG Infect","LG Grimeur","LG Noir","LG Blanc","Assassin","Sorcière"
+];
+
+let players = JSON.parse(localStorage.getItem("lg_players") || "[]");
+
+function save() {
+    localStorage.setItem("lg_players", JSON.stringify(players));
+}
+
+// Assurer que chaque joueur a un ID unique
+function ensurePlayerIds() {
+    players.forEach((p, i) => {
+        if (!p.id) p.id = Date.now() + i;
+    });
+}
+
+// Trier selon l'ordre et la case Première nuit
+function render() {
+    ensurePlayerIds();
+    const div = document.getElementById("list");
+    div.innerHTML = "";
+
+    // Séparer morts et vivants
+    const alive = players.filter(p => p.alive);
+    const dead = players.filter(p => !p.alive);
+
+    // Trier vivants selon ROLE_ORDER
+    alive.sort((a,b)=>{
+        const orderA = ROLE_ORDER.indexOf(a.role);
+        const orderB = ROLE_ORDER.indexOf(b.role);
+        if(a.firstNight && !b.firstNight) return 1;
+        if(!a.firstNight && b.firstNight) return -1;
+        return orderA - orderB;
+    });
+
+    const all = [...alive, ...dead];
+
+    all.forEach((p)=>{
+        const row = document.createElement("div");
+        row.className = "player"+(p.alive?"":" dead");
+
+        let firstNightCheckbox = "";
+        if(["Ange","Chien-loup","Enfant sauvage","Vieux fou","Cupidon","Chasseur"].includes(p.role) && p.alive){
+            firstNightCheckbox = `<label><input type="checkbox" onchange="toggleFirstNight('${p.id}')" ${p.firstNight?'checked':''}> Première nuit</label>`;
+        }
+
+        let witchButtons = "";
+        if(p.role==="Sorcière"){
+            witchButtons = `
+            <button onclick="useLifePotion('${p.id}')" ${p.lifePotionUsed?"disabled":""}>Potion Vie</button>
+            <button onclick="useDeathPotion('${p.id}')" ${p.deathPotionUsed?"disabled":""}>Potion Mort</button>
+            `;
+        }
+
+        row.innerHTML = `
+        <div>
+            <b>${p.name}</b>
+            <div class="actions">
+                <button onclick="actionSee('${p.id}')">Voir</button>
+                ${firstNightCheckbox}
+                ${witchButtons}
+            </div>
+        </div>
+        <div>
+            <button class="btn" onclick="toggleAlive('${p.id}')">${p.alive?"Tuer":"Réanimer"}</button>
+            <button class="btn" onclick="del('${p.id}')">Supprimer</button>
+        </div>
+        `;
+        div.appendChild(row);
+    });
+}
+
+// Ajouter joueur
+function addPlayer(){
+    const nameInput = document.getElementById("name");
+    const roleSelect = document.getElementById("roleSelect");
+    if(!nameInput.value.trim()) return;
+
+    players.push({
+        name:nameInput.value.trim(),
+        role:roleSelect.value,
+        alive:true,
+        firstNight:false,
+        lifePotionUsed:false,
+        deathPotionUsed:false
+    });
+
+    nameInput.value="";
+    save();
+    render();
+}
+
+// Actions
+function actionSee(id){ const p = players.find(x => x.id == id); alert(p.name+" est "+p.role); }
+function toggleAlive(id){ const p = players.find(x => x.id == id); p.alive=!p.alive; save(); render(); }
+function del(id){ players = players.filter(x => x.id != id); save(); render(); }
+
+function toggleFirstNight(id){
+    const p = players.find(x => x.id == id);
+    p.firstNight = !p.firstNight;
+    save();
+    render();
+}
+
+// Sorcière
+function useLifePotion(id){
+    const p = players.find(x => x.id == id);
+    if(!p.lifePotionUsed){ p.alive=true; p.lifePotionUsed=true; save(); render(); alert(p.name+" a été sauvée !"); }
+}
+function useDeathPotion(id){
+    const p = players.find(x => x.id == id);
+    if(!p.deathPotionUsed){ p.alive=false; p.deathPotionUsed=true; save(); render(); alert(p.name+" est morte !"); }
+}
+
+// Export / Import
+function exportData(){ const data = JSON.stringify(players,null,2); const blob = new Blob([data],{type:"application/json"}); const url = URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="lg_save.json"; a.click(); }
+function importData(event){ const file=event.target.files[0]; if(!file) return; const reader=new FileReader(); reader.onload=function(e){ try{ players=JSON.parse(e.target.result)||[]; save(); render(); }catch{ alert("Fichier non valide."); } }; reader.readAsText(file); }
+
+render();
+</script>
+</body>
+</html>
