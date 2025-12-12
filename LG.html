@@ -20,25 +20,33 @@ h2 { margin-top: 25px; }
 <h2>Ajouter un joueur</h2>
 <input id="name" placeholder="Nom">
 <select id="roleSelect">
-    <option value="Ange">Ange</option>
-    <option value="Chien-loup">Chien-loup</option>
-    <option value="Enfant sauvage">Enfant sauvage</option>
+    <!--Villageois-->
+    <option value="Villageois">Villageois</option>
+    <option value="Sorcière">Sorcière</option>
+    <option value="Renard">Renard</option>
     <option value="Vieux fou">Vieux fou</option>
-    <option value="Cupidon">Cupidon</option>
     <option value="Chasseur">Chasseur</option>
+    <option value="Cupidon">Cupidon</option>
     <option value="Voyante">Voyante</option>
     <option value="Garde">Garde</option>
     <option value="Croque mort">Croque mort</option>
-    <option value="Cannibale">Cannibale</option>
-    <option value="Renard">Renard</option>
+
+    <!--LG-->
     <option value="LG simple">Loup-garou simple</option>
     <option value="LG Infect">Infect père des loups</option>
     <option value="LG Grimeur">Loup-garou grimeur</option>
     <option value="LG Noir">Loup-garou noir</option>
     <option value="LG Blanc">Loup-garou blanc</option>
+
+    <!--Solo-->
+    <option value="Ange">Ange</option>
+    <option value="Cannibale">Cannibale</option>
     <option value="Assassin">Assassin</option>
-    <option value="Sorcière">Sorcière</option>
-    <option value="Villageois">Villageois</option>
+
+    <!--Bipolaire-->
+    <option value="Chien-loup">Chien-loup</option>
+    <option value="Enfant sauvage">Enfant sauvage</option>
+
 </select>
 <button onclick="addPlayer()">Ajouter</button>
 
@@ -61,16 +69,42 @@ const ROLE_ORDER = [
     "LG simple","LG Infect","LG Grimeur","LG Noir","LG Blanc","Sorcière","Assassin","Villageois"
 ];
 
+// Camps et mapping rôle -> camp
+const CAMP_ORDER = ["Villageois","LG","Solo","Bipolaire"];
+const ROLE_TO_CAMP = {
+    "Villageois":"Villageois",
+    "Sorcière":"Villageois",
+    "Renard":"Villageois",
+    "Vieux fou":"Villageois",
+    "Chasseur":"Villageois",
+    "Cupidon":"Villageois",
+    "Voyante":"Villageois",
+    "Garde":"Villageois",
+    "Croque mort":"Villageois",
+
+    "LG simple":"LG",
+    "LG Infect":"LG",
+    "LG Grimeur":"LG",
+    "LG Noir":"LG",
+    "LG Blanc":"LG",
+
+    "Ange":"Solo",
+    "Cannibale":"Solo",
+    "Assassin":"Solo",
+
+    "Chien-loup":"Bipolaire",
+    "Enfant sauvage":"Bipolaire"
+};
+
 // Charger/sauvegarder joueurs
 let players = JSON.parse(localStorage.getItem("lg_players") || "[]");
 
 // Remplir filtre de rôle
 function populateRoleFilter(){
     const sel = document.getElementById('roleFilter');
-    const seen = new Set();
-    ROLE_ORDER.forEach(r=>seen.add(r));
-    Array.from(seen).forEach(r=>{
-        const opt = document.createElement('option'); opt.value = r; opt.textContent = r; sel.appendChild(opt);
+    // populate with camps (Villageois, LG, Solo, Bipolaire)
+    CAMP_ORDER.forEach(c=>{
+        const opt = document.createElement('option'); opt.value = c; opt.textContent = c; sel.appendChild(opt);
     });
 }
 
@@ -137,6 +171,19 @@ document.getElementById('search').addEventListener('input', render);
 document.getElementById('roleFilter').addEventListener('change', render);
 render();
 
+// Mettre à jour la disponibilité des options dans le select d'ajout
+function updateRoleSelectAvailability(){
+    const sel = document.getElementById('roleSelect');
+    if(!sel) return;
+    const used = new Set(players.map(p=>p.role));
+    Array.from(sel.options).forEach(opt=>{
+        // Autoriser plusieurs 'Villageois' : ne pas désactiver cette option
+        if(opt.value === 'Villageois') { opt.disabled = false; return; }
+        // Désactiver les rôles déjà utilisés (sauf Villageois)
+        if(opt.value && used.has(opt.value)) opt.disabled = true; else opt.disabled = false;
+    });
+}
+
 function save() {
     localStorage.setItem("lg_players", JSON.stringify(players));
 }
@@ -164,6 +211,12 @@ function render() {
 
     // Trier vivants selon ROLE_ORDER
     alive.sort((a,b)=>{
+        const campA = ROLE_TO_CAMP[a.role] || 'Villageois';
+        const campB = ROLE_TO_CAMP[b.role] || 'Villageois';
+        const orderCampA = CAMP_ORDER.indexOf(campA);
+        const orderCampB = CAMP_ORDER.indexOf(campB);
+        if(orderCampA !== orderCampB) return orderCampA - orderCampB;
+        // même camp -> fallback sur ROLE_ORDER
         const orderA = ROLE_ORDER.indexOf(a.role);
         const orderB = ROLE_ORDER.indexOf(b.role);
         if(a.firstNight && !b.firstNight) return 1;
@@ -217,6 +270,9 @@ function render() {
         `;
         div.appendChild(row);
     });
+
+    // mettre à jour disponibilité des rôles dans le select d'ajout
+    updateRoleSelectAvailability();
 }
 
 // Ajouter joueur
