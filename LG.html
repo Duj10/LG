@@ -30,6 +30,7 @@ h2 { margin-top: 25px; }
     <option value="Voyante">Voyante</option>
     <option value="Garde">Garde</option>
     <option value="Croque mort">Croque mort</option>
+    <option value="Instituteur" disabled>L'instituteur</option>
 
     <!--LG-->
     <option value="LG simple">Loup-garou simple</option>
@@ -81,6 +82,7 @@ const ROLE_TO_CAMP = {
     "Voyante":"Villageois",
     "Garde":"Villageois",
     "Croque mort":"Villageois",
+    "Instituteur":"Villageois",
 
     "LG simple":"LG",
     "LG Infect":"LG",
@@ -137,7 +139,9 @@ function importPlayers(ev){
                     firstNight: !!p.firstNight,
                     lifePotionUsed: !!p.lifePotionUsed,
                     deathPotionUsed: !!p.deathPotionUsed,
-                    id: p.id || undefined
+                    id: p.id || undefined,
+                    partnerId: p.partnerId || undefined,
+                    cupidonUsed: !!p.cupidonUsed
                 };
             });
 
@@ -182,6 +186,56 @@ function updateRoleSelectAvailability(){
         // Désactiver les rôles déjà utilisés (sauf Villageois)
         if(opt.value && used.has(opt.value)) opt.disabled = true; else opt.disabled = false;
     });
+}
+
+// --- Cupidon: selection et mise en couple ---
+function startCoupleSelection(cupidId){
+    // créer overlay
+    if(document.getElementById('coupleOverlay')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'coupleOverlay';
+    overlay.style.position = 'fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background = 'rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+
+    const box = document.createElement('div');
+    box.style.background = '#fff'; box.style.padding='16px'; box.style.borderRadius='8px'; box.style.maxHeight='70%'; box.style.overflow='auto'; box.style.minWidth='320px';
+    const title = document.createElement('div'); title.textContent = 'Sélectionner 2 joueurs à mettre en couple'; title.style.fontWeight='bold'; title.style.marginBottom='8px';
+    box.appendChild(title);
+
+    const list = document.createElement('div');
+    players.filter(p=>p.alive && p.id !== cupidId).forEach(p=>{
+        const row = document.createElement('div');
+        row.style.marginBottom='6px';
+        row.innerHTML = `<label><input type="checkbox" class="coupleChoice" value="${p.id}"> ${p.name} ${p.partnerId?'<span>❤️</span>':''}</label>`;
+        list.appendChild(row);
+    });
+    box.appendChild(list);
+
+    const help = document.createElement('div'); help.style.marginTop='8px'; help.textContent='Choisir exactement deux joueurs.'; box.appendChild(help);
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>{overlay.remove();};
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const checked = Array.from(list.querySelectorAll('.coupleChoice:checked')).map(i=>i.value);
+        if(checked.length !== 2){ alert('Sélectionnez exactement deux joueurs.'); return; }
+            setCouple(checked[0], checked[1], cupidId);
+        overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
+
+    overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+function setCouple(idA, idB, cupidId){
+    const a = players.find(p=>p.id==idA); const b = players.find(p=>p.id==idB);
+    if(!a || !b) { alert('Joueurs introuvables'); return; }
+    // Défaire couples précédents
+    if(a.partnerId){ const old = players.find(p=>p.id==a.partnerId); if(old) old.partnerId = undefined; }
+    if(b.partnerId){ const old = players.find(p=>p.id==b.partnerId); if(old) old.partnerId = undefined; }
+    a.partnerId = b.id; b.partnerId = a.id;
+    // marquer l'utilisation de Cupidon
+    if(cupidId){ const cup = players.find(p=>p.id==cupidId); if(cup) cup.cupidonUsed = true; }
+    save(); render();
+    alert(a.name + ' et ' + b.name + ' sont maintenant en couple ❤️');
 }
 
 function save() {
@@ -254,13 +308,19 @@ function render() {
             `;
         }
 
+        let cupidonButton = "";
+        if(p.role === 'Cupidon' && p.alive && !p.cupidonUsed){
+            cupidonButton = `<button onclick="startCoupleSelection('${p.id}')">Mettre en couple</button>`;
+        }
+
         row.innerHTML = `
         <div>
-            <b>${p.name}</b>
+            <b>${p.name}</b> ${p.partnerId?'<span title="En couple">❤️</span>':''}
             <div class="actions">
                 <button onclick="actionSee('${p.id}')">Voir</button>
                 ${firstNightCheckbox}
                 ${witchButtons}
+                ${cupidonButton}
             </div>
         </div>
         <div>
@@ -287,7 +347,9 @@ function addPlayer(){
         alive:true,
         firstNight:false,
         lifePotionUsed:false,
-        deathPotionUsed:false
+        deathPotionUsed:false,
+        partnerId: undefined,
+        cupidonUsed: false
     });
 
     nameInput.value="";
@@ -297,8 +359,31 @@ function addPlayer(){
 
 // Actions
 function actionSee(id){ const p = players.find(x => x.id == id); alert(p.name+" est "+p.role); }
-function toggleAlive(id){ const p = players.find(x => x.id == id); p.alive=!p.alive; save(); render(); }
-function del(id){ players = players.filter(x => x.id != id); save(); render(); }
+function toggleAlive(id){
+    const p = players.find(x => x.id == id);
+    if(!p) return;
+    p.alive = !p.alive;
+    // si p vient de mourir, tuer aussi le partenaire
+    if(p.alive === false && p.partnerId){
+        const partner = players.find(x=>x.id == p.partnerId);
+        if(partner && partner.alive){
+            partner.alive = false;
+            alert(partner.name + ' meurt aussi (partenaire de ' + p.name + ')');
+        }
+    }
+    save(); render();
+}
+
+function del(id){
+    // avant suppression, retirer lien de couple si existant
+    const p = players.find(x=>x.id==id);
+    if(p && p.partnerId){
+        const partner = players.find(x=>x.id==p.partnerId);
+        if(partner) partner.partnerId = undefined;
+    }
+    players = players.filter(x => x.id != id);
+    save(); render();
+}
 
 function toggleFirstNight(id){
     const p = players.find(x => x.id == id);
