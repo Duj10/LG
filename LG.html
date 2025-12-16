@@ -313,6 +313,11 @@ function render() {
             cupidonButton = `<button onclick="startCoupleSelection('${p.id}')">Mettre en couple</button>`;
         }
 
+        let hunterButton = "";
+        if(p.role === 'Chasseur' && p.alive){
+            hunterButton = `<button onclick="seeChienLoup('${p.id}')">Voir Chien-loup</button>`;
+        }
+
         row.innerHTML = `
         <div>
             <b>${p.name}</b> ${p.partnerId?'<span title="En couple">❤️</span>':''}
@@ -321,6 +326,7 @@ function render() {
                 ${firstNightCheckbox}
                 ${witchButtons}
                 ${cupidonButton}
+                ${hunterButton}
             </div>
         </div>
         <div>
@@ -359,6 +365,15 @@ function addPlayer(){
 
 // Actions
 function actionSee(id){ const p = players.find(x => x.id == id); alert(p.name+" est "+p.role); }
+// Chasseur peut voir qui est le Chien-loup
+function seeChienLoup(chasseurId){
+    const ch = players.find(p=>p.id==chasseurId);
+    if(!ch) return;
+    const wolves = players.filter(p=>p.role === 'Chien-loup');
+    if(wolves.length === 0){ alert('Aucun Chien-loup trouvé.'); return; }
+    const names = wolves.map(w=>w.name + (w.alive ? '' : ' (mort)')).join(', ');
+    alert('Chien-loup : ' + names);
+}
 function toggleAlive(id){
     const p = players.find(x => x.id == id);
     if(!p) return;
