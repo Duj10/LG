@@ -57,6 +57,9 @@ h2 { margin-top: 25px; }
     <select id="roleFilter">
         <option value="">Tous rôles</option>
     </select>
+    <span style="margin-left:12px">Nuit: <span id="nightDisplay">1</span></span>
+    <button onclick="nextNight()" style="margin-left:6px">Nouvelle nuit</button>
+    <button onclick="resetNight()" style="margin-left:6px">Réinitialiser nuit</button>
     <button onclick="exportPlayers()" style="margin-left:8px">Exporter JSON</button>
     <button onclick="document.getElementById('importFile').click()">Importer JSON</button>
     <input id="importFile" type="file" accept="application/json" style="display:none" onchange="importPlayers(event)">
@@ -101,6 +104,10 @@ const ROLE_TO_CAMP = {
 // Charger/sauvegarder joueurs
 let players = JSON.parse(localStorage.getItem("lg_players") || "[]");
 
+// nuit courante (persistée séparément)
+let currentNight = parseInt(localStorage.getItem("lg_currentNight") || "1", 10);
+function saveNight(){ localStorage.setItem("lg_currentNight", String(currentNight)); }
+
 // Remplir filtre de rôle
 function populateRoleFilter(){
     const sel = document.getElementById('roleFilter');
@@ -141,7 +148,13 @@ function importPlayers(ev){
                     deathPotionUsed: !!p.deathPotionUsed,
                     id: p.id || undefined,
                     partnerId: p.partnerId || undefined,
-                    cupidonUsed: !!p.cupidonUsed
+                    cupidonUsed: !!p.cupidonUsed,
+                    croqueUses: typeof p.croqueUses === 'number' ? p.croqueUses : 0,
+                    hiddenNight: typeof p.hiddenNight === 'number' ? p.hiddenNight : undefined,
+                    deathNight: typeof p.deathNight === 'number' ? p.deathNight : undefined,
+                    vieuxFouRole: p.vieuxFouRole || undefined,
+                    vieuxFouResurrected: !!p.vieuxFouResurrected,
+                    guardProtectedNight: typeof p.guardProtectedNight === 'number' ? p.guardProtectedNight : undefined
                 };
             });
 
@@ -171,9 +184,11 @@ function importPlayers(ev){
 
 // initialisation: remplir filtre, lier événements et rendre
 populateRoleFilter();
-document.getElementById('search').addEventListener('input', render);
-document.getElementById('roleFilter').addEventListener('change', render);
-render();
+    document.getElementById('search').addEventListener('input', render);
+    document.getElementById('roleFilter').addEventListener('change', render);
+    render();
+    // afficher la nuit courante au chargement
+    updateNightDisplay();
 
 // Mettre à jour la disponibilité des options dans le select d'ajout
 function updateRoleSelectAvailability(){
@@ -242,6 +257,19 @@ function save() {
     localStorage.setItem("lg_players", JSON.stringify(players));
 }
 
+function updateNightDisplay(){
+    const d = document.getElementById('nightDisplay'); if(d) d.textContent = String(currentNight);
+}
+
+function nextNight(){
+    currentNight += 1; saveNight(); updateNightDisplay(); alert('Nuit '+currentNight+' commencée');
+}
+
+function resetNight(){
+    if(!confirm('Réinitialiser la nuit à 1 ?')) return;
+    currentNight = 1; saveNight(); updateNightDisplay();
+}
+
 // Assurer que chaque joueur a un ID unique
 function ensurePlayerIds() {
     players.forEach((p, i) => {
@@ -252,6 +280,7 @@ function ensurePlayerIds() {
 // Trier selon l'ordre et la case Première nuit
 function render() {
     ensurePlayerIds();
+    updateNightDisplay();
     const div = document.getElementById("list");
     div.innerHTML = "";
 
@@ -296,8 +325,10 @@ function render() {
         row.className = "player"+(p.alive?"":" dead");
 
         let firstNightCheckbox = "";
-        if(["Chien-loup","Enfant sauvage","Vieux fou","Cupidon","Chasseur"].includes(p.role) && p.alive){
-            firstNightCheckbox = `<label><input type="checkbox" onchange="toggleFirstNight('${p.id}')" ${p.firstNight?'checked':''}> Première nuit</label>`;
+        // Affichage "Première nuit" seulement en bas à la nuit 2, pas ici
+        // Mais ajouter un bouton pour marquer/démarquer
+        if(["Chien-loup","Enfant sauvage","Vieux fou","Cupidon","Chasseur"].includes(p.role) && p.alive && currentNight === 1){
+            firstNightCheckbox = `<button onclick="toggleFirstNight('${p.id}')" style="padding:2px 6px; font-size:12px;">${p.firstNight?'✓ Première nuit':'Première nuit'}</button>`;
         }
 
         let witchButtons = "";
@@ -318,6 +349,16 @@ function render() {
             hunterButton = `<button onclick="seeChienLoup('${p.id}')">Voir Chien-loup</button>`;
         }
 
+        let vieuxFouButton = "";
+        if(p.role === 'Vieux fou' && p.alive && currentNight === 1 && !p.vieuxFouRole){
+            vieuxFouButton = `<button onclick="chooseVieuxFouRole('${p.id}')">Choisir rôle</button>`;
+        }
+
+        let gardeButton = "";
+        if(p.role === 'Garde' && p.alive){
+            gardeButton = `<button onclick="startGuardProtection('${p.id}')">Protéger</button>`;
+        }
+
         row.innerHTML = `
         <div>
             <b>${p.name}</b> ${p.partnerId?'<span title="En couple">❤️</span>':''}
@@ -327,6 +368,8 @@ function render() {
                 ${witchButtons}
                 ${cupidonButton}
                 ${hunterButton}
+                ${vieuxFouButton}
+                ${gardeButton}
             </div>
         </div>
         <div>
@@ -336,6 +379,22 @@ function render() {
         `;
         div.appendChild(row);
     });
+
+    // Afficher section "Première nuit" à partir de la nuit 2
+    if(currentNight >= 2){
+        const firstNightPlayers = players.filter(p=>p.firstNight && ["Chien-loup","Enfant sauvage","Vieux fou","Cupidon","Chasseur"].includes(p.role));
+        if(firstNightPlayers.length > 0){
+            const section = document.createElement('div');
+            section.style.marginTop = '16px'; section.style.padding = '10px'; section.style.border = '2px solid #ff9800'; section.style.borderRadius = '6px'; section.style.backgroundColor = '#fff3e0';
+            const title = document.createElement('div'); title.textContent = '⭐ Première nuit (ont agi la nuit 1)'; title.style.fontWeight = 'bold'; title.style.marginBottom = '8px'; section.appendChild(title);
+            firstNightPlayers.forEach(p=>{
+                const row = document.createElement('div'); row.style.marginBottom = '4px';
+                row.innerHTML = `<b>${p.name}</b> (${p.role})`;
+                section.appendChild(row);
+            });
+            div.appendChild(section);
+        }
+    }
 
     // mettre à jour disponibilité des rôles dans le select d'ajout
     updateRoleSelectAvailability();
@@ -348,6 +407,7 @@ function addPlayer(){
     if(!nameInput.value.trim()) return;
 
     players.push({
+        id: Date.now() + Math.floor(Math.random()*100000),
         name:nameInput.value.trim(),
         role:roleSelect.value,
         alive:true,
@@ -355,7 +415,13 @@ function addPlayer(){
         lifePotionUsed:false,
         deathPotionUsed:false,
         partnerId: undefined,
-        cupidonUsed: false
+        cupidonUsed: false,
+        vieuxFouRole: undefined,
+        vieuxFouResurrected: false,
+        croqueUses: 0,
+        hiddenNight: undefined,
+        deathNight: undefined,
+        guardProtectedNight: undefined
     });
 
     nameInput.value="";
@@ -377,6 +443,11 @@ function seeChienLoup(chasseurId){
 function toggleAlive(id){
     const p = players.find(x => x.id == id);
     if(!p) return;
+    // si on tente de tuer et que le joueur est protégé cette nuit, empêcher
+    if(p.alive && p.guardProtectedNight === currentNight){
+        alert(p.name + ' est protégé par le Garde cette nuit.');
+        return;
+    }
     p.alive = !p.alive;
     // si p vient de mourir, tuer aussi le partenaire
     if(p.alive === false && p.partnerId){
@@ -415,6 +486,59 @@ function useLifePotion(id){
 function useDeathPotion(id){
     const p = players.find(x => x.id == id);
     if(!p.deathPotionUsed){; p.deathPotionUsed=true; save(); render(); alert("Potion de mort utiliser"); }
+}
+
+// --- Vieux fou ---
+function chooseVieuxFouRole(vieuxId){
+    const v = players.find(p=>p.id==vieuxId); if(!v) return;
+    const choice = prompt('Choisir: tapez "Ancien" ou "Cinglé"');
+    if(choice === 'Ancien' || choice === 'Cinglé'){
+        v.vieuxFouRole = choice;
+        save(); render();
+        alert(v.name + ' est maintenant '+choice+'. Ressuscitera une fois si tué par ' + (choice==='Ancien'?'les loups':'le village') + '.');
+    } else if(choice !== null){
+        alert('Choix invalide. Tapez "Ancien" ou "Cinglé".');
+    }
+}
+
+// --- Garde ---
+function startGuardProtection(gardeId){
+    if(document.getElementById('gardeOverlay')) return;
+    const garde = players.find(p=>p.id==gardeId); if(!garde) return;
+    const overlay = document.createElement('div'); overlay.id='gardeOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='280px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Garde: protéger un joueur (nuit '+currentNight+')'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+
+    const list = document.createElement('div');
+    const targetable = players.filter(p=>p.alive && p.id !== gardeId);
+    if(targetable.length === 0){ list.textContent = 'Aucun joueur à protéger.'; }
+    targetable.forEach(p=>{
+        const row = document.createElement('div'); row.style.marginBottom='6px';
+        row.innerHTML = `<label><input type="radio" name="gardeChoice" value="${p.id}"> ${p.name}</label>`;
+        list.appendChild(row);
+    });
+    box.appendChild(list);
+
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="gardeChoice"]:checked'); if(!sel){ alert('Sélectionnez un joueur.'); return; }
+        const targetId = sel.value;
+        protectTarget(gardeId, targetId);
+        overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+function protectTarget(gardeId, targetId){
+    const target = players.find(p=>p.id==targetId);
+    if(!target) return;
+    target.guardProtectedNight = currentNight;
+    save(); render();
+    alert(target.name + ' est protégé par le Garde pour la nuit ' + currentNight + '.');
 }
 </script>
 </body>
