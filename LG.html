@@ -142,6 +142,7 @@ function importPlayers(ev){
                 return {
                     name: p.name,
                     role: (p.role && typeof p.role === 'string') ? p.role : 'Villageois',
+                    chienChoice: p.chienChoice || undefined,
                     alive: typeof p.alive === 'boolean' ? p.alive : true,
                     firstNight: !!p.firstNight,
                     lifePotionUsed: !!p.lifePotionUsed,
@@ -294,8 +295,9 @@ function render() {
 
     // Trier vivants selon ROLE_ORDER
     alive.sort((a,b)=>{
-        const campA = ROLE_TO_CAMP[a.role] || 'Villageois';
-        const campB = ROLE_TO_CAMP[b.role] || 'Villageois';
+        // Si un Chien-loup a choisi le camp 'Loup', le considérer comme 'LG' pour le tri
+        const campA = (a.role === 'Chien-loup' && a.chienChoice === 'Loup') ? 'LG' : (ROLE_TO_CAMP[a.role] || 'Villageois');
+        const campB = (b.role === 'Chien-loup' && b.chienChoice === 'Loup') ? 'LG' : (ROLE_TO_CAMP[b.role] || 'Villageois');
         const orderCampA = CAMP_ORDER.indexOf(campA);
         const orderCampB = CAMP_ORDER.indexOf(campB);
         if(orderCampA !== orderCampB) return orderCampA - orderCampB;
@@ -360,6 +362,16 @@ function render() {
             }
         }
 
+        let chienButton = "";
+        if(p.role === 'Chien-loup' && p.alive){
+            if(p.chienChoice){
+                // Afficher le camp choisi sans possibilité de le changer
+                chienButton = `<span style="margin-right:6px">Camp: ${p.chienChoice}</span>`;
+            } else {
+                chienButton = `<button onclick="startChienChoice('${p.id}')">Choisir camp</button>`;
+            }
+        }
+
         
 
         let grimeurButton = "";
@@ -394,6 +406,7 @@ function render() {
                 ${cupidonButton}
                 ${hunterButton}
                 ${enfantButton}
+                ${chienButton}
                 ${vieuxFouButton}
                 ${infectButton}
                 ${grimeurButton}
@@ -438,6 +451,7 @@ function addPlayer(){
         id: Date.now() + Math.floor(Math.random()*100000),
         name:nameInput.value.trim(),
         role:roleSelect.value,
+        chienChoice: undefined,
         alive:true,
         firstNight:false,
         lifePotionUsed:false,
@@ -726,6 +740,44 @@ function setMentor(childId, mentorId){
 }
 
  
+// --- Chien-loup: choix de camp ---
+function startChienChoice(chienId){
+    if(document.getElementById('chienOverlay')) return;
+    const ch = players.find(p=>p.id==chienId); if(!ch) return;
+    if(ch.chienChoice){ alert(ch.name + ' a déjà choisi son camp: ' + ch.chienChoice + '. Impossible de changer.'); return; }
+    const overlay = document.createElement('div'); overlay.id='chienOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='280px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Chien-loup: choisir le camp'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+    const list = document.createElement('div');
+    const optionL = document.createElement('div'); optionL.innerHTML = `<label><input type="radio" name="chienChoice" value="Loup" ${ch.chienChoice==='Loup'?'checked':''}> Loup (joue comme loup)</label>`;
+    const optionC = document.createElement('div'); optionC.innerHTML = `<label><input type="radio" name="chienChoice" value="Chien" ${ch.chienChoice==='Chien'?'checked':''}> Chien (joue comme villageois)</label>`;
+    list.appendChild(optionL); list.appendChild(optionC); box.appendChild(list);
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="chienChoice"]:checked'); if(!sel){ alert('Sélectionnez un camp.'); return; }
+        setChienChoice(chienId, sel.value);
+        overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+function setChienChoice(chienId, choice){
+    const p = players.find(x=>x.id==chienId); if(!p) return;
+    p.chienChoice = choice;
+    save(); render();
+    alert(p.name + ' choisit le camp: ' + choice + '.');
+}
+
+// Helper: rôle affiché à la Voyante (à utiliser si la Voyante est réintroduite)
+function getRoleForVoyante(p){
+    if(!p) return undefined;
+    if(p.role === 'Chien-loup' && p.chienChoice === 'Loup') return 'Villageois';
+    return p.role;
+}
 </script>
 </body>
 </html>
