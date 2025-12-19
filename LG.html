@@ -349,6 +349,14 @@ function render() {
             hunterButton = `<button onclick="seeChienLoup('${p.id}')">Voir Chien-loup</button>`;
         }
 
+        
+
+        let grimeurButton = "";
+        if(p.role === 'LG Grimeur' && p.alive){
+            const used = p.grimeUsed ? true : false;
+            grimeurButton = `<button onclick="startGrime('${p.id}')" ${used?"disabled":""}>Grimer</button>`;
+        }
+
         let infectButton = "";
         if(p.role === 'LG Infect' && p.alive){
             const used = p.infectUsed ? true : false;
@@ -367,7 +375,7 @@ function render() {
 
         row.innerHTML = `
         <div>
-            <b>${p.name}</b> ${p.infected?'<span title="Infecté">🐺</span>':''} ${p.partnerId?'<span title="En couple">❤️</span>':''}
+            <b>${p.name}</b> ${p.infected?'<span title="Infecté">🐺</span>':''} ${p.grimed?'<span title="Grimé">🎭</span>':''} ${p.partnerId?'<span title="En couple">❤️</span>':''}
             <div class="actions">
                 <button onclick="actionSee('${p.id}')">Voir</button>
                 ${firstNightCheckbox}
@@ -376,6 +384,7 @@ function render() {
                 ${hunterButton}
                 ${vieuxFouButton}
                 ${infectButton}
+                ${grimeurButton}
                 ${gardeButton}
             </div>
         </div>
@@ -428,8 +437,10 @@ function addPlayer(){
         croqueUses: 0,
         hiddenNight: undefined,
         deathNight: undefined,
-        guardProtectedNight: undefined
-        ,infectUsed: false
+        guardProtectedNight: undefined,
+        infectUsed: false,
+        grimeUsed: false,
+        grimed: false
     });
 
     nameInput.value="";
@@ -438,7 +449,7 @@ function addPlayer(){
 }
 
 // Actions
-function actionSee(id){ const p = players.find(x => x.id == id); alert(p.name+" est "+p.role); }
+function actionSee(id){ const p = players.find(x => x.id == id); if(!p) return; const shownRole = p.grimed ? 'Loup-garou simple' : p.role; alert(p.name+" est "+shownRole); }
 // Chasseur peut voir qui est le Chien-loup
 function seeChienLoup(chasseurId){
     const ch = players.find(p=>p.id==chasseurId);
@@ -596,6 +607,53 @@ function performInfect(infectId, targetId){
     save(); render();
     alert(target.name + ' a été infecté (nuit '+currentNight+').');
 }
+
+// --- Grimeur ---
+function startGrime(grimeurId){
+    if(document.getElementById('grimeOverlay')) return;
+    const gr = players.find(p=>p.id==grimeurId); if(!gr) return;
+    if(gr.grimeUsed){ alert(gr.name + ' a déjà utilisé son pouvoir de grimer.'); return; }
+    const overlay = document.createElement('div'); overlay.id='grimeOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='280px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Grimer: choisir une cible (nuit '+currentNight+')'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+
+    const list = document.createElement('div');
+    // Seules les victimes mortes peuvent être grimées
+    const targetable = players.filter(p=>!p.alive && p.id !== grimeurId);
+    if(targetable.length === 0){ list.textContent = 'Aucune cible disponible.'; }
+    targetable.forEach(p=>{
+        const row = document.createElement('div'); row.style.marginBottom='6px';
+        row.innerHTML = `<label><input type="radio" name="grimeChoice" value="${p.id}"> ${p.name}</label>`;
+        list.appendChild(row);
+    });
+    box.appendChild(list);
+
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="grimeChoice"]:checked'); if(!sel){ alert('Sélectionnez un joueur.'); return; }
+        const targetId = sel.value;
+        performGrime(grimeurId, targetId);
+        overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+function performGrime(grimeurId, targetId){
+    const gr = players.find(p=>p.id==grimeurId); if(!gr) return;
+    const target = players.find(p=>p.id==targetId); if(!target) return;
+    target.grimed = true;
+    target.grimedBy = grimeurId;
+    target.grimedNight = currentNight;
+    gr.grimeUsed = true;
+    save(); render();
+    alert(target.name + ' a été grimé (sera vu comme Loup-garou simple).');
+}
+
+ 
 </script>
 </body>
 </html>
