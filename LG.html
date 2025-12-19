@@ -143,6 +143,10 @@ function importPlayers(ev){
                     name: p.name,
                     role: (p.role && typeof p.role === 'string') ? p.role : 'Villageois',
                     chienChoice: p.chienChoice || undefined,
+                    angeRoleChoice: p.angeRoleChoice || undefined,
+                    dechuTargetId: p.dechuTargetId || undefined,
+                    extraLives: typeof p.extraLives === 'number' ? p.extraLives : 0,
+                    angeProtectedId: p.angeProtectedId || undefined,
                     alive: typeof p.alive === 'boolean' ? p.alive : true,
                     firstNight: !!p.firstNight,
                     lifePotionUsed: !!p.lifePotionUsed,
@@ -351,6 +355,28 @@ function render() {
             hunterButton = `<button onclick="seeChienLoup('${p.id}')">Voir Chien-loup</button>`;
         }
 
+        let angeButton = "";
+        if(p.role === 'Ange' && p.alive){
+            if(!p.angeRoleChoice){
+                angeButton = `<button onclick="startAngeChoice('${p.id}')">Choisir Déchu/Gardien</button>`;
+            } else if(p.angeRoleChoice === 'Déchu'){
+                const t = p.dechuTargetId ? (players.find(x=>x.id==p.dechuTargetId)?.name || 'supprimé') : 'aucune';
+                angeButton = `<span style="margin-right:6px">Déchu → cible: ${t}${p.extraLives?(' (vies:'+p.extraLives+')'):''}</span> <button onclick="startDechuTargetSelection('${p.id}')">Choisir cible</button>`;
+            } else if(p.angeRoleChoice === 'Gardien'){
+                let protName = 'aucun';
+                if(p.angeProtectedId){
+                    const protObj = players.find(x=>x.id==p.angeProtectedId);
+                    protName = protObj ? protObj.name : 'supprimé';
+                    if(protObj && !protObj.alive) protName += ' (mort)';
+                }
+                if(!p.angeProtectedId){
+                    angeButton = `<button onclick="startAngeGuardianSelection('${p.id}')">Choisir protégé</button>`;
+                } else {
+                    angeButton = `<span style="margin-right:6px">Gardien → protégé: ${protName}</span>`;
+                }
+            }
+        }
+
         let enfantButton = "";
         if(p.role === 'Enfant sauvage' && p.alive){
             if(p.mentorId){
@@ -405,6 +431,7 @@ function render() {
                 ${witchButtons}
                 ${cupidonButton}
                 ${hunterButton}
+                ${angeButton}
                 ${enfantButton}
                 ${chienButton}
                 ${vieuxFouButton}
@@ -451,7 +478,11 @@ function addPlayer(){
         id: Date.now() + Math.floor(Math.random()*100000),
         name:nameInput.value.trim(),
         role:roleSelect.value,
-        chienChoice: undefined,
+            chienChoice: undefined,
+            angeRoleChoice: undefined,
+            dechuTargetId: undefined,
+            extraLives: 0,
+            angeProtectedId: undefined,
         alive:true,
         firstNight:false,
         lifePotionUsed:false,
@@ -501,6 +532,18 @@ function toggleAlive(id){
         alert(p.name + ' est protégé par le Garde cette nuit.');
         return;
     }
+    // Ange Gardien: immortel tant que son protégé est vivant
+    if(p.alive && p.role === 'Ange' && p.angeRoleChoice === 'Gardien' && p.angeProtectedId){
+        const prot = players.find(x=>x.id==p.angeProtectedId);
+        if(prot && prot.alive){ alert(p.name + ' est immortel tant que son protégé est vivant.'); return; }
+    }
+    // Ange Déchu: si il a des vies, consommer une vie pour survivre
+    if(p.alive && p.role === 'Ange' && p.extraLives && p.extraLives > 0){
+        p.extraLives = (p.extraLives||0) - 1;
+        save(); render();
+        alert(p.name + ' utilise une vie et survit. Vies restantes: ' + p.extraLives);
+        return;
+    }
     p.alive = !p.alive;
     // si p vient de mourir, tuer aussi le partenaire
     if(p.alive === false && p.partnerId){
@@ -509,6 +552,23 @@ function toggleAlive(id){
             partner.alive = false;
             alert(partner.name + ' meurt aussi (partenaire de ' + p.name + ')');
         }
+    }
+    // Si une cible meurt, vérifier les Dechus qui l'avaient désignée
+    if(p.alive === false){
+        players.forEach(ch => {
+            if(ch.role === 'Ange' && ch.angeRoleChoice === 'Déchu' && ch.dechuTargetId == p.id){
+                ch.extraLives = (ch.extraLives || 0) + 1;
+                ch.dechuTargetId = undefined;
+                alert(ch.name + ' (Déchu) gagne une vie car sa cible ' + p.name + ' est morte.');
+            }
+        });
+
+        // Si un protégé meurt, informer le Gardien (le protégé reste enregistré — pas de nouveau choix)
+        players.forEach(a => {
+            if(a.role === 'Ange' && a.angeRoleChoice === 'Gardien' && a.angeProtectedId == p.id){
+                alert(a.name + ' (Gardien) perd son protégé ' + p.name + ' (mort).');
+            }
+        });
     }
     // Si ce joueur était mentor, convertir les enfants sauvages qui l'avaient choisi
     if(p.alive === false){
@@ -740,6 +800,100 @@ function setMentor(childId, mentorId){
 }
 
  
+// --- Ange: choix et actions (Déchu / Gardien) ---
+function startAngeChoice(angeId){
+    if(document.getElementById('angeChoiceOverlay')) return;
+    const ange = players.find(p=>p.id==angeId); if(!ange) return;
+    const overlay = document.createElement('div'); overlay.id='angeChoiceOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='280px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Ange: choisir Déchu ou Gardien'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+    const list = document.createElement('div');
+    list.innerHTML = `<label><input type="radio" name="angeChoice" value="Déchu"> Déchu</label><br><label><input type="radio" name="angeChoice" value="Gardien"> Gardien</label>`;
+    box.appendChild(list);
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="angeChoice"]:checked'); if(!sel){ alert('Sélectionnez Déchu ou Gardien.'); return; }
+        ange.angeRoleChoice = sel.value;
+        save(); render();
+        // si Déchu, inviter à choisir une cible maintenant
+        if(sel.value === 'Déchu') startDechuTargetSelection(angeId);
+        // si Gardien, autoriser sélection seulement si première nuit
+        if(sel.value === 'Gardien'){
+            startAngeGuardianSelection(angeId);
+        }
+        overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+function startDechuTargetSelection(angeId){
+    if(document.getElementById('dechuOverlay')) return;
+    const ange = players.find(p=>p.id==angeId); if(!ange) return;
+    const overlay = document.createElement('div'); overlay.id='dechuOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='280px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Déchu: choisir une cible'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+    const list = document.createElement('div');
+    const targetable = players.filter(p=>p.alive && p.id !== angeId);
+    if(targetable.length === 0) list.textContent = 'Aucune cible disponible.';
+    targetable.forEach(t=>{ const row = document.createElement('div'); row.style.marginBottom='6px'; row.innerHTML = `<label><input type="radio" name="dechuChoice" value="${t.id}"> ${t.name} ${t.alive? '': '(mort)'} </label>`; list.appendChild(row); });
+    box.appendChild(list);
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="dechuChoice"]:checked'); if(!sel){ alert('Sélectionnez une cible.'); return; }
+        setDechuTarget(angeId, sel.value);
+        overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+function setDechuTarget(angeId, targetId){
+    const a = players.find(p=>p.id==angeId); if(!a) return;
+    a.dechuTargetId = targetId;
+    save(); render();
+    const t = players.find(p=>p.id==targetId);
+    alert(a.name + ' (Déchu) désigne ' + (t? t.name : 'inconnu') + ' comme cible.');
+}
+
+function startAngeGuardianSelection(angeId){
+    if(document.getElementById('angeGuardianOverlay')) return;
+    const ange = players.find(p=>p.id==angeId); if(!ange) return;
+    if(ange.angeProtectedId){ alert(ange.name + ' a déjà choisi un protégé.'); return; }
+    const overlay = document.createElement('div'); overlay.id='angeGuardianOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='280px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Gardien: choisir votre protégé (1ère nuit)'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+    const list = document.createElement('div');
+    const targetable = players.filter(p=>p.alive && p.id !== angeId);
+    if(targetable.length === 0) list.textContent = 'Aucun joueur vivant disponible.';
+    targetable.forEach(t=>{ const row = document.createElement('div'); row.style.marginBottom='6px'; row.innerHTML = `<label><input type="radio" name="guardianChoice" value="${t.id}"> ${t.name}</label>`; list.appendChild(row); });
+    box.appendChild(list);
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="guardianChoice"]:checked'); if(!sel){ alert('Sélectionnez un joueur.'); return; }
+        setAngeProtected(angeId, sel.value);
+        overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+function setAngeProtected(angeId, targetId){
+    const a = players.find(p=>p.id==angeId); if(!a) return;
+    a.angeProtectedId = targetId;
+    save(); render();
+    const t = players.find(p=>p.id==targetId);
+    alert(a.name + ' (Gardien) protège ' + (t? t.name : 'inconnu') + ' tant qu\'il est vivant.');
+}
 // --- Chien-loup: choix de camp ---
 function startChienChoice(chienId){
     if(document.getElementById('chienOverlay')) return;
