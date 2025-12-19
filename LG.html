@@ -29,8 +29,9 @@ h2 { margin-top: 25px; }
     <option value="Cupidon">Cupidon</option>
     <option value="Voyante">Voyante</option>
     <option value="Garde">Garde</option>
+    <option value="Shérif">Shérif</option>
     <option value="Croque mort">Croque mort</option>
-    <option value="Instituteur" disabled>L'instituteur</option>
+    <option value="Instituteur">L'instituteur</option>
 
     <!--LG-->
     <option value="LG simple">Loup-garou simple</option>
@@ -86,6 +87,7 @@ const ROLE_TO_CAMP = {
     "Garde":"Villageois",
     "Croque mort":"Villageois",
     "Instituteur":"Villageois",
+    "Shérif":"Villageois",
 
     "LG simple":"LG",
     "LG Infect":"LG",
@@ -147,6 +149,8 @@ function importPlayers(ev){
                     dechuTargetId: p.dechuTargetId || undefined,
                     extraLives: typeof p.extraLives === 'number' ? p.extraLives : 0,
                     angeProtectedId: p.angeProtectedId || undefined,
+                    sheriffTargets: Array.isArray(p.sheriffTargets) ? p.sheriffTargets : [],
+                    sheriffBlockedNight: typeof p.sheriffBlockedNight === 'number' ? p.sheriffBlockedNight : undefined,
                     alive: typeof p.alive === 'boolean' ? p.alive : true,
                     firstNight: !!p.firstNight,
                     lifePotionUsed: !!p.lifePotionUsed,
@@ -210,6 +214,9 @@ function updateRoleSelectAvailability(){
 
 // --- Cupidon: selection et mise en couple ---
 function startCoupleSelection(cupidId){
+    // Empêcher si Cupidon est bloqué par le Shérif cette nuit
+    const cupidActor = players.find(p=>p.id==cupidId);
+    if(cupidActor && cupidActor.sheriffBlockedNight === currentNight){ alert(cupidActor.name + ' est bloqué par le Shérif cette nuit.'); return; }
     // créer overlay
     if(document.getElementById('coupleOverlay')) return;
     const overlay = document.createElement('div');
@@ -377,6 +384,11 @@ function render() {
             }
         }
 
+        let sheriffButton = "";
+        if(p.role === 'Shérif' && p.alive){
+            sheriffButton = `<button onclick="startSheriffAction('${p.id}')">Empêcher action</button>`;
+        }
+
         let enfantButton = "";
         if(p.role === 'Enfant sauvage' && p.alive){
             if(p.mentorId){
@@ -432,6 +444,7 @@ function render() {
                 ${cupidonButton}
                 ${hunterButton}
                 ${angeButton}
+                ${sheriffButton}
                 ${enfantButton}
                 ${chienButton}
                 ${vieuxFouButton}
@@ -483,6 +496,8 @@ function addPlayer(){
             dechuTargetId: undefined,
             extraLives: 0,
             angeProtectedId: undefined,
+            sheriffTargets: [],
+            sheriffBlockedNight: undefined,
         alive:true,
         firstNight:false,
         lifePotionUsed:false,
@@ -626,6 +641,9 @@ function chooseVieuxFouRole(vieuxId){
 
 // --- Garde ---
 function startGuardProtection(gardeId){
+    // Empêcher si Garde est bloqué par le Shérif cette nuit
+    const gardeActor = players.find(p=>p.id==gardeId);
+    if(gardeActor && gardeActor.sheriffBlockedNight === currentNight){ alert(gardeActor.name + ' est bloqué par le Shérif cette nuit.'); return; }
     if(document.getElementById('gardeOverlay')) return;
     const garde = players.find(p=>p.id==gardeId); if(!garde) return;
     const overlay = document.createElement('div'); overlay.id='gardeOverlay';
@@ -666,6 +684,9 @@ function protectTarget(gardeId, targetId){
 
 // --- Infect (père des loups infect) ---
 function startInfect(infectId){
+    // Empêcher si Infect est bloqué par le Shérif cette nuit
+    const infectActor = players.find(p=>p.id==infectId);
+    if(infectActor && infectActor.sheriffBlockedNight === currentNight){ alert(infectActor.name + ' est bloqué par le Shérif cette nuit.'); return; }
     if(document.getElementById('infectOverlay')) return;
     const infect = players.find(p=>p.id==infectId); if(!infect) return;
     if(infect.infectUsed){ alert(infect.name + ' a déjà utilisé son pouvoir d\'infection.'); return; }
@@ -714,6 +735,9 @@ function performInfect(infectId, targetId){
 
 // --- Grimeur ---
 function startGrime(grimeurId){
+    // Empêcher si Grimeur est bloqué par le Shérif cette nuit
+    const grActor = players.find(p=>p.id==grimeurId);
+    if(grActor && grActor.sheriffBlockedNight === currentNight){ alert(grActor.name + ' est bloqué par le Shérif cette nuit.'); return; }
     if(document.getElementById('grimeOverlay')) return;
     const gr = players.find(p=>p.id==grimeurId); if(!gr) return;
     if(gr.grimeUsed){ alert(gr.name + ' a déjà utilisé son pouvoir de grimer.'); return; }
@@ -831,6 +855,9 @@ function startAngeChoice(angeId){
 }
 
 function startDechuTargetSelection(angeId){
+    // Empêcher si Ange (acteur) est bloqué par le Shérif cette nuit
+    const angeActor = players.find(p=>p.id==angeId);
+    if(angeActor && angeActor.sheriffBlockedNight === currentNight){ alert(angeActor.name + ' est bloqué par le Shérif cette nuit.'); return; }
     if(document.getElementById('dechuOverlay')) return;
     const ange = players.find(p=>p.id==angeId); if(!ange) return;
     const overlay = document.createElement('div'); overlay.id='dechuOverlay';
@@ -893,6 +920,42 @@ function setAngeProtected(angeId, targetId){
     save(); render();
     const t = players.find(p=>p.id==targetId);
     alert(a.name + ' (Gardien) protège ' + (t? t.name : 'inconnu') + ' tant qu\'il est vivant.');
+}
+// --- Shérif: empêcher l'action d'un joueur ---
+function startSheriffAction(sheriffId){
+    if(document.getElementById('sherifOverlay')) return;
+    const sheriff = players.find(p=>p.id==sheriffId); if(!sheriff) return;
+    if(currentNight === 1){ alert('Le Shérif ne peut pas agir la première nuit.'); return; }
+    const overlay = document.createElement('div'); overlay.id='sherifOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='320px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Shérif: empêcher l\'action d\'un joueur (nuit '+currentNight+')'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+    const list = document.createElement('div');
+    // cibles: vivants, pas soi-même, et pas déjà visés par ce shérif
+    const targetable = players.filter(p=>p.alive && p.id !== sheriffId && !(sheriff.sheriffTargets || []).includes(p.id));
+    if(targetable.length === 0){ list.textContent = 'Aucune cible disponible (ou déjà visée auparavant).'; }
+    targetable.forEach(p=>{ const row = document.createElement('div'); row.style.marginBottom='6px'; row.innerHTML = `<label><input type="radio" name="sherifChoice" value="${p.id}"> ${p.name}</label>`; list.appendChild(row); });
+    box.appendChild(list);
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="sherifChoice"]:checked'); if(!sel){ alert('Sélectionnez un joueur.'); return; }
+        performSheriff(sheriffId, sel.value);
+        overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+function performSheriff(sheriffId, targetId){
+    const s = players.find(p=>p.id==sheriffId); if(!s) return;
+    const t = players.find(p=>p.id==targetId); if(!t) return;
+    t.sheriffBlockedNight = currentNight;
+    s.sheriffTargets = s.sheriffTargets || [];
+    s.sheriffTargets.push(targetId);
+    save(); render();
+    alert(s.name + ' (Shérif) empêche l\'action de ' + t.name + ' pour la nuit ' + currentNight + '.');
 }
 // --- Chien-loup: choix de camp ---
 function startChienChoice(chienId){
