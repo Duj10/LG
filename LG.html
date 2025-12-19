@@ -349,6 +349,17 @@ function render() {
             hunterButton = `<button onclick="seeChienLoup('${p.id}')">Voir Chien-loup</button>`;
         }
 
+        let enfantButton = "";
+        if(p.role === 'Enfant sauvage' && p.alive){
+            if(p.mentorId){
+                const mentor = players.find(x=>x.id==p.mentorId);
+                const mentorName = mentor ? mentor.name : 'supprimé';
+                enfantButton = `<span style="margin-right:6px">Mentor: ${mentorName}</span> <button onclick="startMentorSelection('${p.id}')">Changer mentor</button>`;
+            } else {
+                enfantButton = `<button onclick="startMentorSelection('${p.id}')">Choisir mentor</button>`;
+            }
+        }
+
         
 
         let grimeurButton = "";
@@ -382,6 +393,7 @@ function render() {
                 ${witchButtons}
                 ${cupidonButton}
                 ${hunterButton}
+                ${enfantButton}
                 ${vieuxFouButton}
                 ${infectButton}
                 ${grimeurButton}
@@ -440,7 +452,9 @@ function addPlayer(){
         guardProtectedNight: undefined,
         infectUsed: false,
         grimeUsed: false,
-        grimed: false
+        grimed: false,
+        mentorId: undefined,
+        wasEnfant: false
     });
 
     nameInput.value="";
@@ -449,7 +463,13 @@ function addPlayer(){
 }
 
 // Actions
-function actionSee(id){ const p = players.find(x => x.id == id); if(!p) return; const shownRole = p.grimed ? 'Loup-garou simple' : p.role; alert(p.name+" est "+shownRole); }
+function actionSee(id){
+    const p = players.find(x => x.id == id);
+    if(!p) return;
+    // Toujours montrer le rôle réel — y compris pour les joueurs grimés ou Enfant sauvage
+    const shownRole = p.role;
+    alert(p.name + " est " + shownRole);
+}
 // Chasseur peut voir qui est le Chien-loup
 function seeChienLoup(chasseurId){
     const ch = players.find(p=>p.id==chasseurId);
@@ -475,6 +495,16 @@ function toggleAlive(id){
             partner.alive = false;
             alert(partner.name + ' meurt aussi (partenaire de ' + p.name + ')');
         }
+    }
+    // Si ce joueur était mentor, convertir les enfants sauvages qui l'avaient choisi
+    if(p.alive === false){
+        players.forEach(ch => {
+            if(ch.role === 'Enfant sauvage' && ch.mentorId == p.id && ch.alive){
+                ch.role = 'LG simple';
+                ch.wasEnfant = true;
+                alert(ch.name + ' (Enfant sauvage) devient Loup-garou car son mentor ' + p.name + ' est mort.');
+            }
+        });
     }
     save(); render();
 }
@@ -651,6 +681,48 @@ function performGrime(grimeurId, targetId){
     gr.grimeUsed = true;
     save(); render();
     alert(target.name + ' a été grimé (sera vu comme Loup-garou simple).');
+}
+
+// --- Enfant sauvage: choisir un mentor ---
+function startMentorSelection(childId){
+    if(document.getElementById('mentorOverlay')) return;
+    const child = players.find(p=>p.id==childId); if(!child) return;
+    const overlay = document.createElement('div'); overlay.id='mentorOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='280px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Choisir un mentor pour ' + child.name; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+
+    const list = document.createElement('div');
+    // mentors possibles: vivants et pas l'enfant lui-même
+    const targetable = players.filter(p=>p.alive && p.id !== childId);
+    if(targetable.length === 0){ list.textContent = 'Aucun mentor disponible.'; }
+    targetable.forEach(p=>{
+        const row = document.createElement('div'); row.style.marginBottom='6px';
+        row.innerHTML = `<label><input type="radio" name="mentorChoice" value="${p.id}"> ${p.name}</label>`;
+        list.appendChild(row);
+    });
+    box.appendChild(list);
+
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="mentorChoice"]:checked'); if(!sel){ alert('Sélectionnez un mentor.'); return; }
+        const mentorId = sel.value;
+        setMentor(childId, mentorId);
+        overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+function setMentor(childId, mentorId){
+    const child = players.find(p=>p.id==childId); if(!child) return;
+    const mentor = players.find(p=>p.id==mentorId);
+    if(!mentor){ alert('Mentor introuvable'); return; }
+    child.mentorId = mentorId;
+    save(); render();
+    alert(child.name + ' a choisi ' + mentor.name + ' comme mentor.');
 }
 
  
