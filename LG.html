@@ -30,6 +30,7 @@ h2 { margin-top: 25px; }
     <option value="Chasseur">Chasseur</option>
 
     <!-- Reveil toute kes nuit / a partir de la deuxième nuit -->
+    <option value="Shérif">Shérif</option>
     <option value="Voyante">Voyante</option>
     <option value="Garde">Garde</option>
     <option value="Croque mort">Croque mort</option>
@@ -70,9 +71,10 @@ h2 { margin-top: 25px; }
 
 <script>
 const ROLE_ORDER = [
-    "Ange","Chien-loup","Enfant sauvage","Vieux fou","Cupidon","Chasseur",
+    "Shérif","Ange","Chien-loup","Enfant sauvage","Vieux fou","Cupidon","Chasseur",
     "Voyante","Garde","Croque mort","Cannibale","Renard",
-    "LG simple","LG Infect","LG Grimeur","LG Noir","LG Blanc","Sorcière","Assassin","Villageois"
+    "LG simple","LG Infect","LG Grimeur","LG Craintif","LG Noir","LG Blanc",
+    "Sorcière","Assassin","Villageois","Instituteur"
 ];
 
 // Camps et mapping rôle -> camp
@@ -95,6 +97,7 @@ const ROLE_TO_CAMP = {
     "LG Grimeur":"LG",
     "LG Noir":"LG",
     "LG Blanc":"LG",
+    "LG Craintif":"LG",
 
     "Ange":"Solo",
     "Cannibale":"Solo",
@@ -429,6 +432,20 @@ function render() {
             infectButton = `<button onclick="startInfect('${p.id}')" ${used?"disabled":""}>Infecter</button>`;
         }
 
+        let craintifButton = "";
+        if(p.role === 'LG Craintif' && p.alive){
+            const wolvesCount = players.filter(x=>{
+                const camp = (x.role === 'Chien-loup' && x.chienChoice === 'Loup') ? 'LG' : (ROLE_TO_CAMP[x.role] || 'Villageois');
+                return x.alive && camp === 'LG';
+            }).length;
+            if(wolvesCount > 3){
+                craintifButton = `<span style="margin-right:8px">Rôle affiché: Villageois (façade tant qu'il y a &gt;3 loups)</span>`;
+            } else {
+                const used = (p.craintifUsedNight === currentNight);
+                craintifButton = `<button onclick="startCraintifAction('${p.id}')" ${used?"disabled":""}>Entrouvrir les yeux (${used?"déjà utilisé":"1/nuit"})</button>`;
+            }
+        }
+
         let vieuxFouButton = "";
         if(p.role === 'Vieux fou' && p.alive && currentNight === 1 && !p.vieuxFouRole){
             vieuxFouButton = `<button onclick="chooseVieuxFouRole('${p.id}')">Choisir rôle</button>`;
@@ -521,6 +538,7 @@ function addPlayer(){
         grimed: false,
         mentorId: undefined,
         wasEnfant: false
+            ,craintifUsedNight: undefined
     });
 
     nameInput.value="";
@@ -585,6 +603,22 @@ function startInstituteurAction(instId){
     actions.appendChild(btnW); actions.appendChild(btnS); actions.appendChild(cancel);
     box.appendChild(actions);
     overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+// --- Loup-garou Craintif: entrouvrir les yeux (1/nuit) ---
+function startCraintifAction(cId){
+    const p = players.find(x=>x.id==cId);
+    if(!p) return;
+    if(p.sheriffBlockedNight === currentNight){ alert(p.name + ' est bloqué par le Shérif cette nuit.'); return; }
+    // calculer loups vivants
+    const wolvesCount = players.filter(x=>{
+        const camp = (x.role === 'Chien-loup' && x.chienChoice === 'Loup') ? 'LG' : (ROLE_TO_CAMP[x.role] || 'Villageois');
+        return x.alive && camp === 'LG';
+    }).length;
+    if(wolvesCount > 3){
+        alert('Trop de loups (>' + 3 + '): vous gardez votre rôle de façade Villageois.');
+        return;
+    }
 }
 function toggleAlive(id){
     const p = players.find(x => x.id == id);
@@ -1039,6 +1073,14 @@ function setChienChoice(chienId, choice){
 // Helper: rôle affiché à la Voyante (à utiliser si la Voyante est réintroduite)
 function getRoleForVoyante(p){
     if(!p) return undefined;
+    // Loup-garou craintif: façade Villageois tant qu'il y a plus de 3 loups vivants
+    if(p.role === 'LG Craintif'){
+        const wolvesCount = players.filter(x=>{
+            const camp = (x.role === 'Chien-loup' && x.chienChoice === 'Loup') ? 'LG' : (ROLE_TO_CAMP[x.role] || 'Villageois');
+            return x.alive && camp === 'LG';
+        }).length;
+        if(wolvesCount > 3) return 'Villageois';
+    }
     if(p.role === 'Chien-loup' && p.chienChoice === 'Loup') return 'Villageois';
     return p.role;
 }
