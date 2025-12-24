@@ -20,35 +20,36 @@ h2 { margin-top: 25px; }
 <h2>Ajouter un joueur</h2>
 <input id="name" placeholder="Nom">
 <select id="roleSelect">
-    <!--Villageois-->
-    <option value="Villageois">Villageois</option>
-    <option value="Sorcière">Sorcière</option>
-    <option value="Renard">Renard</option>
+
+    <!-- Reveil nuit 1 -->
+    <option value="Ange">Ange</option>
+    <option value="Chien-loup">Chien-loup</option>
+    <option value="Enfant sauvage">Enfant sauvage</option>
     <option value="Vieux fou">Vieux fou</option>
-    <option value="Chasseur">Chasseur</option>
     <option value="Cupidon">Cupidon</option>
+    <option value="Chasseur">Chasseur</option>
+
+    <!-- Reveil toute kes nuit / a partir de la deuxième nuit -->
     <option value="Voyante">Voyante</option>
     <option value="Garde">Garde</option>
-    <option value="Shérif">Shérif</option>
     <option value="Croque mort">Croque mort</option>
-    <option value="Instituteur">L'instituteur</option>
-
-    <!--LG-->
+    <option value="Cannibale">Cannibale</option>
+    <option value="Renard">Renard</option>
     <option value="LG simple">Loup-garou simple</option>
     <option value="LG Infect">Infect père des loups</option>
     <option value="LG Grimeur">Loup-garou grimeur</option>
+    <option value="LG Craintif">Loup-garou craintif</option>
     <option value="LG Noir">Loup-garou noir</option>
     <option value="LG Blanc">Loup-garou blanc</option>
-
-    <!--Solo-->
-    <option value="Ange">Ange</option>
-    <option value="Cannibale">Cannibale</option>
+    <option value="Sorcière">Sorcière</option>
     <option value="Assassin">Assassin</option>
 
-    <!--Bipolaire-->
-    <option value="Chien-loup">Chien-loup</option>
-    <option value="Enfant sauvage">Enfant sauvage</option>
+    <!-- Pas de reveil -->
+    <option value="Villageois">Villageois</option>
 
+    <option value="Shérif">Shérif</option>
+    <option value="Instituteur">L'instituteur</option>
+    
 </select>
 <button onclick="addPlayer()">Ajouter</button>
 
@@ -389,6 +390,10 @@ function render() {
             sheriffButton = `<button onclick="startSheriffAction('${p.id}')">Empêcher action</button>`;
         }
 
+        let instituteurButton = "";
+        if(p.role === 'Instituteur' && p.alive){
+            instituteurButton = `<button onclick="startInstituteurAction('${p.id}')">Voir loups/solo</button>`;
+        }
         let enfantButton = "";
         if(p.role === 'Enfant sauvage' && p.alive){
             if(p.mentorId){
@@ -445,6 +450,7 @@ function render() {
                 ${hunterButton}
                 ${angeButton}
                 ${sheriffButton}
+                ${instituteurButton}
                 ${enfantButton}
                 ${chienButton}
                 ${vieuxFouButton}
@@ -538,6 +544,47 @@ function seeChienLoup(chasseurId){
     if(wolves.length === 0){ alert('Aucun Chien-loup trouvé.'); return; }
     const names = wolves.map(w=>w.name + (w.alive ? '' : ' (mort)')).join(', ');
     alert('Chien-loup : ' + names);
+}
+
+function startInstituteurAction(instId){
+    const inst = players.find(p=>p.id==instId);
+    if(!inst) return;
+    if(inst.sheriffBlockedNight === currentNight){ alert(inst.name + ' est bloqué par le Shérif cette nuit.'); return; }
+    if(document.getElementById('institOverlay')) return;
+    const overlay = document.createElement('div'); overlay.id='institOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='320px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Instituteur: voir nombre de loups ou de solos (nuit '+currentNight+')'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+
+    const help = document.createElement('div'); help.style.marginBottom='10px'; help.textContent = 'Choisissez ce que vous voulez voir :'; box.appendChild(help);
+
+    const btnW = document.createElement('button'); btnW.textContent = 'Voir nombre de loups vivants'; btnW.style.marginRight='8px';
+    btnW.onclick = ()=>{
+        const wolvesCount = players.filter(p=>{
+            const camp = (p.role === 'Chien-loup' && p.chienChoice === 'Loup') ? 'LG' : (ROLE_TO_CAMP[p.role] || 'Villageois');
+            return p.alive && camp === 'LG';
+        }).length;
+        alert('Loups vivants: ' + wolvesCount);
+        overlay.remove();
+    };
+
+    const btnS = document.createElement('button'); btnS.textContent = 'Voir nombre de solos vivants'; btnS.style.marginRight='8px';
+    btnS.onclick = ()=>{
+        const solosCount = players.filter(p=>{
+            const camp = (p.role === 'Chien-loup' && p.chienChoice === 'Loup') ? 'LG' : (ROLE_TO_CAMP[p.role] || 'Villageois');
+            return p.alive && camp === 'Solo';
+        }).length;
+        alert('Solos vivants: ' + solosCount);
+        overlay.remove();
+    };
+
+    const cancel = document.createElement('button'); cancel.textContent = 'Annuler'; cancel.onclick = ()=>overlay.remove();
+
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    actions.appendChild(btnW); actions.appendChild(btnS); actions.appendChild(cancel);
+    box.appendChild(actions);
+    overlay.appendChild(box); document.body.appendChild(overlay);
 }
 function toggleAlive(id){
     const p = players.find(x => x.id == id);
