@@ -168,6 +168,8 @@ function importPlayers(ev){
                     vieuxFouRole: p.vieuxFouRole || undefined,
                     vieuxFouResurrected: !!p.vieuxFouResurrected,
                     guardProtectedNight: typeof p.guardProtectedNight === 'number' ? p.guardProtectedNight : undefined
+                    ,deathKiller: typeof p.deathKiller === 'string' ? p.deathKiller : undefined
+                    ,deathCause: typeof p.deathCause === 'string' ? p.deathCause : undefined
                 };
             });
 
@@ -451,6 +453,19 @@ function render() {
             gardeButton = `<button onclick="startGuardProtection('${p.id}')">Protéger</button>`;
         }
 
+        let croqueButton = "";
+        if(p.role === 'Croque mort' && p.alive){
+            croqueButton = `<button onclick="startCroqueInspect('${p.id}')">Voir tueur d'un mort</button>`;
+        }
+
+        let deathInfo = "";
+        if(!p.alive && (p.deathKiller || p.deathCause)){
+            let parts = [];
+            if(p.deathCause) parts.push('Cause: ' + p.deathCause);
+            if(p.deathKiller) parts.push('Tueur: ' + p.deathKiller);
+            deathInfo = `<div style="font-size:12px;color:#555;margin-top:6px">${parts.join(' — ')}</div>`;
+        }
+
         row.innerHTML = `
         <div>
             <b>${p.name}</b> ${p.infected?'<span title="Infecté">🐺</span>':''} ${p.grimed?'<span title="Grimé">🎭</span>':''} ${p.partnerId?'<span title="En couple">❤️</span>':''}
@@ -468,7 +483,9 @@ function render() {
                 ${infectButton}
                 ${grimeurButton}
                 ${gardeButton}
+                ${croqueButton}
             </div>
+            ${deathInfo}
         </div>
         <div>
             <button class="btn" onclick="toggleAlive('${p.id}')">${p.alive?"Tuer":"Réanimer"}</button>
@@ -533,6 +550,8 @@ function addPlayer(){
         mentorId: undefined,
         wasEnfant: false
             ,craintifUsedNight: undefined
+            ,deathKiller: undefined
+            ,deathCause: undefined
     });
 
     nameInput.value="";
@@ -617,41 +636,67 @@ function startCraintifAction(cId){
 
 // Appliquer les conséquences lorsqu'un joueur meurt (suppose p.alive === false)
 function performDeathEffects(p){
-    // si p vient de mourir, tuer aussi le partenaire
-    if(p.partnerId){
-        const partner = players.find(x=>x.id == p.partnerId);
-        if(partner && partner.alive){
-            partner.alive = false;
-            alert(partner.name + ' meurt aussi (partenaire de ' + p.name + ')');
-        }
-    }
+    // demander le pseudo du tueur (overlay) avant d'appliquer les conséquences
+    if(document.getElementById('deathKillerOverlay')) return;
+    const overlay = document.createElement('div'); overlay.id='deathKillerOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='360px'; box.style.maxHeight='80%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Qui a tué ' + p.name + ' ? (optionnel)'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
 
-    // Si une cible meurt, vérifier les Dechus qui l'avaient désignée
-    players.forEach(ch => {
-        if(ch.role === 'Ange' && ch.angeRoleChoice === 'Déchu' && ch.dechuTargetId == p.id){
-            ch.extraLives = (ch.extraLives || 0) + 1;
-            ch.dechuTargetId = undefined;
-            alert(ch.name + ' (Déchu) gagne une vie car sa cible ' + p.name + ' est morte.');
-        }
-    });
+    const inputRow = document.createElement('div'); inputRow.style.marginBottom='8px';
+    inputRow.innerHTML = `<input id="deathKillerInput" placeholder="Pseudo du tueur (laisser vide si inconnu)" style="width:100%; padding:6px">`;
+    box.appendChild(inputRow);
 
-    // Si un protégé meurt, informer le Gardien (le protégé reste enregistré — pas de nouveau choix)
-    players.forEach(a => {
-        if(a.role === 'Ange' && a.angeRoleChoice === 'Gardien' && a.angeProtectedId == p.id){
-            alert(a.name + ' (Gardien) perd son protégé ' + p.name + ' (mort).');
-        }
-    });
+    const causeRow = document.createElement('div'); causeRow.style.marginBottom='8px';
+    causeRow.innerHTML = `<label style="margin-right:8px"><input type="radio" name="deathCause" value="Loups"> Loups</label><label style="margin-right:8px"><input type="radio" name="deathCause" value="Village"> Village</label><label><input type="radio" name="deathCause" value="Autre"> Autre</label>`;
+    box.appendChild(causeRow);
 
-    // Si ce joueur était mentor, convertir les enfants sauvages qui l'avaient choisi
-    players.forEach(ch => {
-        if(ch.role === 'Enfant sauvage' && ch.mentorId == p.id && ch.alive){
-            ch.role = 'LG simple';
-            ch.wasEnfant = true;
-            alert(ch.name + ' (Enfant sauvage) devient Loup-garou car son mentor ' + p.name + ' est mort.');
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Ignorer'; cancel.onclick = ()=>{ overlay.remove(); save(); render(); };
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const killer = (document.getElementById('deathKillerInput').value || '').trim();
+        const sel = box.querySelector('input[name="deathCause"]:checked');
+        const cause = sel ? sel.value : undefined;
+        p.deathKiller = killer || undefined;
+        p.deathCause = cause;
+        // si p vient de mourir, tuer aussi le partenaire
+        if(p.partnerId){
+            const partner = players.find(x=>x.id == p.partnerId);
+            if(partner && partner.alive){
+                partner.alive = false;
+                alert(partner.name + ' meurt aussi (partenaire de ' + p.name + ')');
+            }
         }
-    });
 
-    save(); render();
+        // Si une cible meurt, vérifier les Dechus qui l'avaient désignée
+        players.forEach(ch => {
+            if(ch.role === 'Ange' && ch.angeRoleChoice === 'Déchu' && ch.dechuTargetId == p.id){
+                ch.extraLives = (ch.extraLives || 0) + 1;
+                ch.dechuTargetId = undefined;
+                alert(ch.name + ' (Déchu) gagne une vie car sa cible ' + p.name + ' est morte.');
+            }
+        });
+
+        // Si un protégé meurt, informer le Gardien (le protégé reste enregistré — pas de nouveau choix)
+        players.forEach(a => {
+            if(a.role === 'Ange' && a.angeRoleChoice === 'Gardien' && a.angeProtectedId == p.id){
+                alert(a.name + ' (Gardien) perd son protégé ' + p.name + ' (mort).');
+            }
+        });
+
+        // Si ce joueur était mentor, convertir les enfants sauvages qui l'avaient choisi
+        players.forEach(ch => {
+            if(ch.role === 'Enfant sauvage' && ch.mentorId == p.id && ch.alive){
+                ch.role = 'LG simple';
+                ch.wasEnfant = true;
+                alert(ch.name + ' (Enfant sauvage) devient Loup-garou car son mentor ' + p.name + ' est mort.');
+            }
+        });
+
+        overlay.remove(); save(); render();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions); overlay.appendChild(box); document.body.appendChild(overlay);
 }
 function toggleAlive(id){
     const p = players.find(x => x.id == id);
@@ -742,14 +787,24 @@ function useDeathPotion(id){
 // --- Vieux fou ---
 function chooseVieuxFouRole(vieuxId){
     const v = players.find(p=>p.id==vieuxId); if(!v) return;
-    const choice = prompt('Choisir: tapez "Ancien" ou "Cinglé"');
-    if(choice === 'Ancien' || choice === 'Cinglé'){
-        v.vieuxFouRole = choice;
-        save(); render();
-        alert(v.name + ' est maintenant '+choice+'. Ressuscitera une fois si tué par ' + (choice==='Ancien'?'les loups':'le village') + '.');
-    } else if(choice !== null){
-        alert('Choix invalide. Tapez "Ancien" ou "Cinglé".');
-    }
+    if(document.getElementById('vieuxRoleOverlay')) return;
+    const overlay = document.createElement('div'); overlay.id='vieuxRoleOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='320px';
+    const title = document.createElement('div'); title.textContent = 'Vieux fou: choisir Ancien ou Cinglé (1ère nuit)'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+    const list = document.createElement('div');
+    list.innerHTML = `<label><input type="radio" name="vieuxRoleChoice" value="Ancien"> Ancien (ressuscite si tué par les Loups)</label><br><label><input type="radio" name="vieuxRoleChoice" value="Cinglé"> Cinglé (ressuscite si tué par le Village)</label>`;
+    box.appendChild(list);
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="vieuxRoleChoice"]:checked'); if(!sel){ alert('Sélectionnez Ancien ou Cinglé.'); return; }
+        v.vieuxFouRole = sel.value;
+        overlay.remove(); save(); render();
+        alert(v.name + ' est maintenant '+sel.value+'. Ressuscitera une fois si tué par ' + (sel.value==='Ancien'?'les loups':'le village') + '.');
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions); overlay.appendChild(box); document.body.appendChild(overlay);
 }
 
 // --- Garde ---
@@ -1025,6 +1080,37 @@ function startAngeGuardianSelection(angeId){
     };
     actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
     overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+// --- Croque-mort: voir qui a tué une victime morte ---
+function startCroqueInspect(croqueId){
+    const actor = players.find(p=>p.id==croqueId);
+    if(!actor) return;
+    if(actor.sheriffBlockedNight === currentNight){ alert(actor.name + ' est bloqué par le Shérif cette nuit.'); return; }
+    if(document.getElementById('croqueOverlay')) return;
+    const overlay = document.createElement('div'); overlay.id='croqueOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='320px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Croque-mort: choisir une victime morte à inspecter'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+
+    const list = document.createElement('div');
+    const deadList = players.filter(p=>!p.alive);
+    if(deadList.length === 0) list.textContent = 'Aucun joueur mort à inspecter.';
+    deadList.forEach(d=>{ const row = document.createElement('div'); row.style.marginBottom='6px'; row.innerHTML = `<label><input type="radio" name="croqueChoice" value="${d.id}"> ${d.name} ${d.deathCause?('('+d.deathCause+')'):''}</label>`; list.appendChild(row); });
+    box.appendChild(list);
+
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Voir tueur'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="croqueChoice"]:checked'); if(!sel){ alert('Sélectionnez une victime.'); return; }
+        const target = players.find(p=>p.id==sel.value);
+        if(!target){ alert('Victime introuvable.'); return; }
+        const killer = target.deathKiller || 'inconnu';
+        alert(target.name + (target.deathKiller?('\nTueur: ' + killer):''));
+        overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions); overlay.appendChild(box); document.body.appendChild(overlay);
 }
 
 function setAngeProtected(angeId, targetId){
