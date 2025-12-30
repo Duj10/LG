@@ -2,66 +2,297 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Gestion LG</title>
 <style>
-body { font-family: Arial; margin: 20px; }
-h2 { margin-top: 25px; }
-.player {
-    margin: 6px 0; padding: 10px; border-radius: 6px;
-    border: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center;
+* { box-sizing: border-box; }
+body { 
+    font-family: Arial, sans-serif; 
+    margin: 10px; 
+    font-size: 16px;
 }
+h2 { 
+    margin-top: 20px; 
+    margin-bottom: 10px;
+    font-size: 1.3em;
+}
+
+/* Formulaire d'ajout */
+#name, #roleSelect {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 8px;
+    font-size: 16px; /* Empêche le zoom sur iOS */
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.controls-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.controls-row > * {
+    flex: 1 1 auto;
+}
+
+.controls-row button {
+    min-width: auto;
+    flex: 1 1 auto;
+}
+
+button {
+    padding: 10px 16px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #f0f0f0;
+    cursor: pointer;
+    min-height: 44px; /* Taille minimale pour le tactile */
+    touch-action: manipulation;
+}
+
+button:active {
+    background-color: #e0e0e0;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.player {
+    margin: 8px 0; 
+    padding: 12px; 
+    border-radius: 6px;
+    border: 1px solid #ccc; 
+    display: flex; 
+    flex-direction: column;
+    gap: 10px;
+}
+
+.player > div:first-child {
+    flex: 1;
+}
+
+.player > div:last-child {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .dead { opacity: 0.45; }
-.btn { padding: 4px 8px; margin-left: 5px; }
-.actions button { margin-right: 5px; }
+
+.btn { 
+    padding: 10px 16px; 
+    margin: 0;
+    flex: 1;
+    min-width: 120px;
+}
+
+.actions { 
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.actions button { 
+    margin: 0;
+    padding: 8px 12px;
+    font-size: 14px;
+    flex: 1 1 auto;
+    min-width: 100px;
+}
+
+/* Barre de recherche et filtres */
+#search, #roleFilter {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 8px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+/* Overlays pour mobile */
+div[id$="Overlay"] > div {
+    width: 95% !important;
+    max-width: 500px !important;
+    margin: 10px !important;
+    max-height: 90vh !important;
+    padding: 16px !important;
+}
+
+div[id$="Overlay"] img {
+    max-width: 100% !important;
+    height: auto !important;
+}
+
+/* Amélioration des inputs dans les overlays */
+div[id$="Overlay"] input[type="text"],
+div[id$="Overlay"] input[type="radio"],
+div[id$="Overlay"] select {
+    font-size: 16px !important;
+    padding: 10px !important;
+    min-height: 44px;
+}
+
+div[id$="Overlay"] label {
+    display: block;
+    padding: 10px;
+    margin: 4px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    min-height: 44px;
+    line-height: 24px;
+}
+
+div[id$="Overlay"] label:hover {
+    background-color: #f5f5f5;
+}
+
+div[id$="Overlay"] input[type="radio"]:checked + span,
+div[id$="Overlay"] label:has(input[type="radio"]:checked) {
+    background-color: #e3f2fd;
+    border-color: #2196F3;
+}
+
+/* Boutons dans les overlays */
+div[id$="Overlay"] button {
+    min-height: 44px !important;
+    padding: 12px 20px !important;
+    font-size: 16px !important;
+    margin: 4px !important;
+    flex: 1 1 auto;
+    min-width: 120px;
+}
+
+div[id$="Overlay"] div[style*="textAlign"] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+/* Media queries pour écrans plus grands */
+@media (min-width: 768px) {
+    body { 
+        margin: 20px; 
+        max-width: 1200px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .player {
+        flex-direction: row;
+        align-items: center;
+    }
+    
+    .player > div:last-child {
+        flex: 0 0 auto;
+    }
+    
+    #name, #roleSelect {
+        width: auto;
+        margin-right: 8px;
+        margin-bottom: 0;
+    }
+    
+    #name {
+        flex: 1;
+        min-width: 200px;
+    }
+    
+    #roleSelect {
+        flex: 1;
+        min-width: 250px;
+    }
+    
+    #search, #roleFilter {
+        width: auto;
+        margin-bottom: 0;
+    }
+    
+    #search {
+        flex: 1;
+        min-width: 200px;
+    }
+    
+    #roleFilter {
+        min-width: 150px;
+    }
+    
+    .controls-row {
+        flex-wrap: nowrap;
+    }
+    
+    div[id$="Overlay"] > div {
+        width: auto !important;
+        min-width: 320px !important;
+    }
+}
+
+@media (min-width: 1024px) {
+    .actions button {
+        flex: 0 1 auto;
+    }
+}
 </style>
 </head>
 <body>
 
 <h2>Ajouter un joueur</h2>
-<input id="name" placeholder="Nom">
-<select id="roleSelect">
-
-    <!-- Reveil nuit 1 -->
-    <option value="Chien-loup">Chien-loup</option>
-    <option value="Enfant sauvage">Enfant sauvage</option>
-    <option value="Vieux fou">Vieux fou</option>
-    <option value="Cupidon">Cupidon</option>
-    <option value="Chasseur">Chasseur</option>
-
-    <!-- Reveil toute kes nuit / a partir de la deuxième nuit -->
-    <option value="Shérif">Shérif</option>
-    <option value="Ange">Ange</option>
-    <option value="Voyante">Voyante</option>
-    <option value="Garde">Garde</option>
-    <option value="Croque mort">Croque mort</option>
-    <option value="Cannibale">Cannibale</option>
-    <option value="Renard">Renard</option>
-    <option value="LG simple">Loup-garou simple</option>
-    <option value="LG Infect">Infect père des loups</option>
-    <option value="LG Grimeur">Loup-garou grimeur</option>
-    <option value="LG Craintif">Loup-garou craintif</option>
-    <option value="LG Noir">Loup-garou noir</option>
-    <option value="LG Blanc">Loup-garou blanc</option>
-    <option value="Sorcière">Sorcière</option>
-    <option value="Assassin">Assassin</option>
-    <option value="Instituteur">L'instituteur</option>
-
-    <!-- Pas de reveil -->
-    <option value="Villageois">Villageois</option>
-    
-</select>
-<button onclick="addPlayer()">Ajouter</button>
+<div class="controls-row" style="flex-wrap: wrap;">
+    <input id="name" placeholder="Nom">
+    <select id="roleSelect">
+        <!-- Reveil nuit 1 -->
+        <option value="Chien-loup">Chien-loup</option>
+        <option value="Enfant sauvage">Enfant sauvage</option>
+        <option value="Vieux fou">Vieux fou</option>
+        <option value="Cupidon">Cupidon</option>
+        <option value="Chasseur">Chasseur</option>
+        <!-- Reveil toute kes nuit / a partir de la deuxième nuit -->
+        <option value="Shérif">Shérif</option>
+        <option value="Ange">Ange</option>
+        <option value="Voyante">Voyante</option>
+        <option value="Garde">Garde</option>
+        <option value="Croque mort">Croque mort</option>
+        <option value="Cannibale">Cannibale</option>
+        <option value="Renard">Renard</option>
+        <option value="LG simple">Loup-garou simple</option>
+        <option value="LG Infect">Infect père des loups</option>
+        <option value="LG Grimeur">Loup-garou grimeur</option>
+        <option value="LG Craintif">Loup-garou craintif</option>
+        <option value="LG Noir">Loup-garou noir</option>
+        <option value="LG Blanc">Loup-garou blanc</option>
+        <option value="Sorcière">Sorcière</option>
+        <option value="Assassin">Assassin</option>
+        <option value="Instituteur">L'instituteur</option>
+        <!-- Pas de reveil -->
+        <option value="Villageois">Villageois</option>
+    </select>
+    <button onclick="addPlayer()">Ajouter</button>
+</div>
 
 <h2>Joueurs</h2>
-<div style="margin-bottom:10px">
-    <input id="search" placeholder="Recherche par nom..." style="margin-right:6px">
+<div class="controls-row">
+    <input id="search" placeholder="Recherche par nom...">
     <select id="roleFilter">
         <option value="">Tous rôles</option>
     </select>
-    <span style="margin-left:12px">Nuit: <span id="nightDisplay">1</span></span>
-    <button onclick="nextNight()" style="margin-left:6px">Nouvelle nuit</button>
-    <button onclick="resetNight()" style="margin-left:6px">Réinitialiser nuit</button>
-    <button onclick="exportPlayers()" style="margin-left:8px">Exporter JSON</button>
+</div>
+<div class="controls-row">
+    <span style="display: flex; align-items: center; padding: 0 8px;">Nuit: <span id="nightDisplay" style="font-weight: bold; margin-left: 4px;">1</span></span>
+    <button onclick="nextNight()">Nouvelle nuit</button>
+    <button onclick="resetNight()">Réinitialiser nuit</button>
+</div>
+<div class="controls-row">
+    <button onclick="exportPlayers()">Exporter JSON</button>
     <button onclick="document.getElementById('importFile').click()">Importer JSON</button>
     <input id="importFile" type="file" accept="application/json" style="display:none" onchange="importPlayers(event)">
 </div>
