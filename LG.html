@@ -587,6 +587,15 @@ function addPlayer(){
     render();
 }
 
+// Mapping des noms de rôles vers les noms de fichiers d'images
+const ROLE_TO_FILENAME = {
+    "LG Grimeur": "Loup-garou Grimeur",
+    "LG Craintif": "Loup-garou craintif",
+    "LG Noir": "Loup-garou Noir",
+    "LG Blanc": "Loup-garou Blanc",
+    "Instituteur": "L'instituteur"
+};
+
 // Actions
 function actionSee(id){
     const p = players.find(x => x.id == id);
@@ -601,7 +610,8 @@ function actionSee(id){
     const title = document.createElement('div'); title.textContent = p.name + ' → ' + shownRole; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
 
     const img = document.createElement('img');
-    const norm = String(shownRole).replace(/[^a-z0-9]+/ig,'_');
+    // Utiliser le mapping si disponible, sinon utiliser le nom du rôle tel quel
+    const baseName = ROLE_TO_FILENAME[shownRole] || shownRole;
     img.style.maxWidth='420px'; img.style.maxHeight='320px'; img.style.display='block'; img.style.margin='0 auto 8px';
     // essayer plusieurs extensions
     const exts = ['png','jpg','jpeg','gif','svg'];
@@ -609,7 +619,7 @@ function actionSee(id){
     function tryNext(){
         if(tried >= exts.length){
             const notFound = document.createElement('div'); notFound.textContent = 'Image non trouvée pour ' + shownRole; notFound.style.color='#444'; box.appendChild(notFound); return; }
-        const src = norm + '.' + exts[tried];
+        const src = baseName + '.' + exts[tried];
         img.src = src;
         img.onerror = ()=>{ tried++; tryNext(); };
         img.onload = ()=>{};
