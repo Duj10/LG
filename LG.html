@@ -171,6 +171,9 @@ function importPlayers(ev){
                     guardProtectedNight: typeof p.guardProtectedNight === 'number' ? p.guardProtectedNight : undefined
                     ,deathKiller: typeof p.deathKiller === 'string' ? p.deathKiller : undefined
                     ,deathCause: typeof p.deathCause === 'string' ? p.deathCause : undefined
+                    ,cannibalUsedSteal: !!p.cannibalUsedSteal
+                    ,inTombNight: typeof p.inTombNight === 'number' ? p.inTombNight : undefined
+                    ,previousRole: p.previousRole || undefined
                 };
             });
 
@@ -473,6 +476,11 @@ function render() {
         if(p.role === 'Croque mort' && p.alive){
             croqueButton = `<button onclick="startCroqueInspect('${p.id}')">Voir tueur d'un mort</button>`;
         }
+        let cannibaleButton = "";
+        if(p.role === 'Cannibale' && p.alive){
+            const used = p.cannibalUsedSteal ? true : false;
+            cannibaleButton = `<button onclick="startCannibalAction('${p.id}')" ${'' /* always enabled, but show note if used */}>Action Cannibale${used? ' (voleur utilisé)':''}</button>`;
+        }
 
         let deathInfo = "";
         if(!p.alive && (p.deathKiller || p.deathCause)){
@@ -499,6 +507,7 @@ function render() {
                 ${infectButton}
                 ${grimeurButton}
                 ${gardeButton}
+                    ${cannibaleButton}
                 ${croqueButton}
             </div>
             ${deathInfo}
@@ -568,6 +577,9 @@ function addPlayer(){
             ,craintifUsedNight: undefined
             ,deathKiller: undefined
             ,deathCause: undefined
+            ,cannibalUsedSteal: false
+            ,inTombNight: undefined
+            ,previousRole: undefined
     });
 
     nameInput.value="";
@@ -579,9 +591,34 @@ function addPlayer(){
 function actionSee(id){
     const p = players.find(x => x.id == id);
     if(!p) return;
-    // Toujours montrer le rôle réel — y compris pour les joueurs grimés ou Enfant sauvage
-    const shownRole = p.role;
-    alert(p.name + " est " + shownRole);
+    // Afficher une image représentant le rôle (essaye plusieurs extensions). Si absent, afficher le texte.
+    const shownRole = getRoleForVoyante(p) || p.role;
+    if(document.getElementById('seeOverlay')) return;
+    const overlay = document.createElement('div'); overlay.id='seeOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='260px'; box.style.maxHeight='80%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = p.name + ' → ' + shownRole; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+
+    const img = document.createElement('img');
+    const norm = String(shownRole).replace(/[^a-z0-9]+/ig,'_');
+    img.style.maxWidth='420px'; img.style.maxHeight='320px'; img.style.display='block'; img.style.margin='0 auto 8px';
+    // essayer plusieurs extensions
+    const exts = ['png','jpg','jpeg','gif','svg'];
+    let tried = 0;
+    function tryNext(){
+        if(tried >= exts.length){
+            const notFound = document.createElement('div'); notFound.textContent = 'Image non trouvée pour ' + shownRole; notFound.style.color='#444'; box.appendChild(notFound); return; }
+        const src = norm + '.' + exts[tried];
+        img.src = src;
+        img.onerror = ()=>{ tried++; tryNext(); };
+        img.onload = ()=>{};
+    }
+    tryNext();
+    box.appendChild(img);
+    const close = document.createElement('div'); close.style.textAlign='right';
+    const ok = document.createElement('button'); ok.textContent='Fermer'; ok.onclick = ()=>overlay.remove(); close.appendChild(ok); box.appendChild(close);
+    overlay.appendChild(box); document.body.appendChild(overlay);
 }
 // Chasseur peut voir qui est le Chien-loup
 function seeChienLoup(chasseurId){
@@ -1130,6 +1167,71 @@ function startCroqueInspect(croqueId){
         const killer = target.deathKiller || 'inconnu';
         alert(target.name + (target.deathKiller?('\nTueur: ' + killer):''));
         overlay.remove();
+    };
+    actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions); overlay.appendChild(box); document.body.appendChild(overlay);
+}
+
+// --- Cannibale: entrer dans une tombe OU voler le rôle d'un mort (1x par partie)
+function startCannibalAction(cId){
+    const actor = players.find(p=>p.id==cId);
+    if(!actor) return;
+    if(actor.sheriffBlockedNight === currentNight){ alert(actor.name + ' est bloqué par le Shérif cette nuit.'); return; }
+    if(document.getElementById('cannibalOverlay')) return;
+    const overlay = document.createElement('div'); overlay.id='cannibalOverlay';
+    overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.right='0'; overlay.style.bottom='0';
+    overlay.style.background='rgba(0,0,0,0.4)'; overlay.style.display='flex'; overlay.style.alignItems='center'; overlay.style.justifyContent='center';
+    const box = document.createElement('div'); box.style.background='#fff'; box.style.padding='12px'; box.style.borderRadius='8px'; box.style.minWidth='320px'; box.style.maxHeight='70%'; box.style.overflow='auto';
+    const title = document.createElement('div'); title.textContent = 'Cannibale: choisir action (nuit '+currentNight+')'; title.style.fontWeight='bold'; title.style.marginBottom='8px'; box.appendChild(title);
+
+    const list = document.createElement('div');
+    // Option 1: entrer dans une tombe (protection contre loups cette nuit)
+    const tombRow = document.createElement('div'); tombRow.style.marginBottom='8px';
+    tombRow.innerHTML = `<label><input type="radio" name="cannibalAction" value="tomb"> Entrer dans une tombe (protégé des loups cette nuit)</label>`;
+    list.appendChild(tombRow);
+
+    // Option 2: voler le rôle d'un mort (une seule fois par partie)
+    const stealRow = document.createElement('div'); stealRow.style.marginBottom='8px';
+    const deadList = players.filter(p=>!p.alive);
+    if(actor.cannibalUsedSteal){
+        stealRow.innerHTML = `<label><input type="radio" name="cannibalAction" value="steal" disabled> Voler un rôle (déjà utilisé)</label>`;
+    } else if(deadList.length === 0){
+        stealRow.innerHTML = `<label><input type="radio" name="cannibalAction" value="steal" disabled> Voler un rôle (aucun mort)</label>`;
+    } else {
+        // ajouter select des morts
+        let options = deadList.map(d=>`<option value="${d.id}">${d.name} (${d.role})</option>`).join('');
+        stealRow.innerHTML = `<label><input type="radio" name="cannibalAction" value="steal"> Voler le rôle d'un mort:</label><div style="margin-top:6px"><select id="cannibalDeadSelect">${options}</select></div>`;
+    }
+    list.appendChild(stealRow);
+
+    box.appendChild(list);
+    const actions = document.createElement('div'); actions.style.marginTop='12px'; actions.style.textAlign='right';
+    const cancel = document.createElement('button'); cancel.textContent='Annuler'; cancel.onclick = ()=>overlay.remove();
+    const ok = document.createElement('button'); ok.textContent='Valider'; ok.style.marginLeft='8px'; ok.onclick = ()=>{
+        const sel = box.querySelector('input[name="cannibalAction"]:checked'); if(!sel){ alert('Sélectionnez une action.'); return; }
+        const choice = sel.value;
+        if(choice === 'tomb'){
+            actor.inTombNight = currentNight;
+            actor.cannibalUsedSteal = actor.cannibalUsedSteal || false;
+            save(); render(); alert(actor.name + ' entre dans une tombe pour la nuit ' + currentNight + '.');
+            overlay.remove();
+            return;
+        }
+        if(choice === 'steal'){
+            if(actor.cannibalUsedSteal){ alert('Action de vol déjà utilisée.'); return; }
+            const deadSel = document.getElementById('cannibalDeadSelect');
+            if(!deadSel || !deadSel.value){ alert('Sélectionnez une victime morte.'); return; }
+            const target = players.find(p=>p.id==deadSel.value);
+            if(!target){ alert('Victime introuvable.'); return; }
+            // voler rôle: conserver rôle précédent
+            actor.previousRole = actor.role;
+            actor.role = target.role;
+            actor.cannibalUsedSteal = true;
+            // annuler éventuelle tomb
+            actor.inTombNight = undefined;
+            save(); render(); alert(actor.name + ' a volé le rôle de ' + target.name + ' (nouveau rôle: ' + actor.role + ').');
+            overlay.remove();
+            return;
+        }
     };
     actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions); overlay.appendChild(box); document.body.appendChild(overlay);
 }
