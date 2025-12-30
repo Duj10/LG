@@ -22,7 +22,6 @@ h2 { margin-top: 25px; }
 <select id="roleSelect">
 
     <!-- Reveil nuit 1 -->
-    <option value="Ange">Ange</option>
     <option value="Chien-loup">Chien-loup</option>
     <option value="Enfant sauvage">Enfant sauvage</option>
     <option value="Vieux fou">Vieux fou</option>
@@ -31,6 +30,7 @@ h2 { margin-top: 25px; }
 
     <!-- Reveil toute kes nuit / a partir de la deuxième nuit -->
     <option value="Shérif">Shérif</option>
+    <option value="Ange">Ange</option>
     <option value="Voyante">Voyante</option>
     <option value="Garde">Garde</option>
     <option value="Croque mort">Croque mort</option>
@@ -72,8 +72,11 @@ const ROLE_ORDER = [
     "Shérif","Ange","Chien-loup","Enfant sauvage","Vieux fou","Cupidon","Chasseur",
     "Voyante","Garde","Croque mort","Cannibale","Renard",
     "LG simple","LG Infect","LG Grimeur","LG Craintif","LG Noir","LG Blanc",
-    "Sorcière","Assassin","Villageois","Instituteur"
+    "Sorcière","Assassin","Instituteur", "Villageois"
 ];
+
+// Rôles qui agissent la première nuit et doivent être affichés en dernier
+const FIRST_NIGHT_ROLES = ["Chien-loup","Enfant sauvage","Vieux fou","Cupidon","Chasseur"];
 
 // Camps et mapping rôle -> camp
 const CAMP_ORDER = ["Villageois","LG","Solo","Bipolaire"];
@@ -308,20 +311,25 @@ function render() {
     const alive = players.filter(p => p.alive);
     const dead = players.filter(p => !p.alive);
 
-    // Trier vivants selon ROLE_ORDER
+    // Trier vivants selon l'ordre explicite ROLE_ORDER (critère principal).
+    // Après la nuit 1, repousser les rôles FIRST_NIGHT_ROLES en fin de liste.
     alive.sort((a,b)=>{
-        // Si un Chien-loup a choisi le camp 'Loup', le considérer comme 'LG' pour le tri
-        const campA = (a.role === 'Chien-loup' && a.chienChoice === 'Loup') ? 'LG' : (ROLE_TO_CAMP[a.role] || 'Villageois');
-        const campB = (b.role === 'Chien-loup' && b.chienChoice === 'Loup') ? 'LG' : (ROLE_TO_CAMP[b.role] || 'Villageois');
-        const orderCampA = CAMP_ORDER.indexOf(campA);
-        const orderCampB = CAMP_ORDER.indexOf(campB);
-        if(orderCampA !== orderCampB) return orderCampA - orderCampB;
-        // même camp -> fallback sur ROLE_ORDER
-        const orderA = ROLE_ORDER.indexOf(a.role);
-        const orderB = ROLE_ORDER.indexOf(b.role);
-        if(a.firstNight && !b.firstNight) return 1;
-        if(!a.firstNight && b.firstNight) return -1;
-        return orderA - orderB;
+        // Calculer index de base dans ROLE_ORDER
+        const idxA = ROLE_ORDER.indexOf(a.role);
+        const idxB = ROLE_ORDER.indexOf(b.role);
+        const baseA = idxA === -1 ? Number.MAX_SAFE_INTEGER : idxA;
+        const baseB = idxB === -1 ? Number.MAX_SAFE_INTEGER : idxB;
+
+        // Si on est après la nuit 1, augmenter l'index des rôles "première nuit"
+        const offset = 10000;
+        const aAdjusted = (currentNight >= 2 && FIRST_NIGHT_ROLES.includes(a.role)) ? baseA + offset : baseA;
+        const bAdjusted = (currentNight >= 2 && FIRST_NIGHT_ROLES.includes(b.role)) ? baseB + offset : baseB;
+
+        // Comparer
+        if(aAdjusted !== bAdjusted) return aAdjusted - bAdjusted;
+
+        // Tiebreaker: garder ancien comportement mineur — trier par nom
+        return (a.name || '').localeCompare(b.name || '');
     });
 
     function applyFilters(list){
