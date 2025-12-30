@@ -453,6 +453,14 @@ function updateRoleSelectAvailability(){
     });
 }
 
+// Helper pour fermer overlay en cliquant sur le fond
+function setupOverlayCloseOnBackground(overlay, box){
+    overlay.onclick = (e) => {
+        if(e.target === overlay) overlay.remove();
+    };
+    box.onclick = (e) => e.stopPropagation();
+}
+
 // --- Cupidon: selection et mise en couple ---
 function startCoupleSelection(cupidId){
     // Empêcher si Cupidon est bloqué par le Shérif cette nuit
@@ -490,6 +498,7 @@ function startCoupleSelection(cupidId){
     };
     actions.appendChild(cancel); actions.appendChild(ok); box.appendChild(actions);
 
+    setupOverlayCloseOnBackground(overlay, box);
     overlay.appendChild(box); document.body.appendChild(overlay);
 }
 
@@ -859,6 +868,7 @@ function actionSee(id){
     box.appendChild(img);
     const close = document.createElement('div'); close.style.textAlign='right';
     const ok = document.createElement('button'); ok.textContent='Fermer'; ok.onclick = ()=>overlay.remove(); close.appendChild(ok); box.appendChild(close);
+    setupOverlayCloseOnBackground(overlay, box);
     overlay.appendChild(box); document.body.appendChild(overlay);
 }
 // Chasseur peut voir qui est le Chien-loup
@@ -926,6 +936,10 @@ function startCraintifAction(cId){
         alert('Trop de loups (>' + 3 + '): vous gardez votre rôle de façade Villageois.');
         return;
     }
+    // Marquer l'utilisation pour cette nuit
+    p.craintifUsedNight = currentNight;
+    save(); render();
+    alert(p.name + ' a entrouvert les yeux cette nuit (nuit ' + currentNight + ').');
 }
 
 // Appliquer les conséquences lorsqu'un joueur meurt (suppose p.alive === false)
@@ -1076,11 +1090,11 @@ function toggleFirstNight(id){
 // Sorcière
 function useLifePotion(id){
     const p = players.find(x => x.id == id);
-    if(!p.lifePotionUsed){ p.lifePotionUsed=true; save(); render(); alert("Potion de vie utiliser"); }
+    if(!p.lifePotionUsed){ p.lifePotionUsed=true; save(); render(); alert("Potion de vie utilisée"); }
 }
 function useDeathPotion(id){
     const p = players.find(x => x.id == id);
-    if(!p.deathPotionUsed){; p.deathPotionUsed=true; save(); render(); alert("Potion de mort utiliser"); }
+    if(!p.deathPotionUsed){ p.deathPotionUsed=true; save(); render(); alert("Potion de mort utilisée"); }
 }
 
 // --- Vieux fou ---
