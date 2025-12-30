@@ -44,12 +44,10 @@ h2 { margin-top: 25px; }
     <option value="LG Blanc">Loup-garou blanc</option>
     <option value="Sorcière">Sorcière</option>
     <option value="Assassin">Assassin</option>
+    <option value="Instituteur">L'instituteur</option>
 
     <!-- Pas de reveil -->
     <option value="Villageois">Villageois</option>
-
-    <option value="Shérif">Shérif</option>
-    <option value="Instituteur">L'instituteur</option>
     
 </select>
 <button onclick="addPlayer()">Ajouter</button>
@@ -329,7 +327,17 @@ function render() {
     function applyFilters(list){
         return list.filter(p=>{
             if(q && !p.name.toLowerCase().includes(q)) return false;
-            if(roleFilter && roleFilter.length>0 && p.role !== roleFilter) return false;
+            if(roleFilter && roleFilter.length>0){
+                // Si le filtre correspond à un camp (Villageois, LG, Solo, Bipolaire),
+                // filtrer via ROLE_TO_CAMP (et gérer Chien-loup choisi Loup).
+                if(CAMP_ORDER.includes(roleFilter)){
+                    const camp = (p.role === 'Chien-loup' && p.chienChoice === 'Loup') ? 'LG' : (ROLE_TO_CAMP[p.role] || 'Villageois');
+                    if(camp !== roleFilter) return false;
+                } else {
+                    // Filtre par rôle exact
+                    if(p.role !== roleFilter) return false;
+                }
+            }
             return true;
         });
     }
@@ -753,7 +761,12 @@ function toggleAlive(id){
     }
 
     p.alive = !p.alive;
-    if(p.alive === false) performDeathEffects(p);
+    if(p.alive === false){
+        performDeathEffects(p);
+    } else {
+        // Réanimation : sauvegarder et rafraîchir l'affichage
+        save(); render();
+    }
 }
 
 function del(id){
